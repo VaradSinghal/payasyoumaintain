@@ -91,17 +91,6 @@ def calculate_usage_score(request: ScoreRequest) -> Tuple[float, List[Contributi
             description="Frequent hard acceleration detected."
         ))
 
-    # Secondary minor factor: average speed
-    avg_speed = sum(t.avg_speed_kmh for t in trips) / total_trips
-    if avg_speed > 80.0:
-        score -= 5.0
-        factors.append(ContributingFactor(
-            factor_name="high_average_speed",
-            impact=0.1,
-            direction="negative",
-            description="Average speed across trips is high."
-        ))
-        
     return max(0.0, score), factors
 
 def generate_score(vehicle_id: str, request: ScoreRequest) -> dict:

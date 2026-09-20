@@ -94,7 +94,6 @@ def test_clearly_bad_profile():
     assert "open_recall" in factors
     assert "high_harsh_braking" in factors
     assert "hard_acceleration" in factors
-    assert "high_average_speed" in factors
 
 def test_borderline_profile():
     # Borderline profile: service is just slightly overdue (~13 months), 
@@ -145,4 +144,3 @@ def test_borderline_profile():
     factors = [f["factor_name"] for f in score["contributing_factors"]]
     assert "overdue_service" in factors
     assert "high_harsh_braking" in factors
-    assert "high_average_speed" not in factors # Speed penalty avoided
