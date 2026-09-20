@@ -1,0 +1,18 @@
+server:
+  port: 8082
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: telematics-usage-ingestion
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+
+# ── Telematics-specific config ───────────────────
+telematics:
+  # Time gap (in minutes) between consecutive events that triggers
+  # automatic trip segmentation when trip_id is absent.
+  trip-gap-minutes: 5
