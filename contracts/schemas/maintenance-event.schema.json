@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/maintenance-event/v1.0.0",
+  "title": "Maintenance Event",
+  "description": "A vehicle maintenance or service event ingested by the maintenance-vehicle-health-ingestion service. Represents a single visit to a garage, dealership, or a self-reported service entry.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "vehicle_id",
+    "service_date",
+    "service_type",
+    "odometer_km",
+    "parts_replaced",
+    "source"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this maintenance event."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle that was serviced."
+    },
+    "service_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO-8601 date on which the service was performed."
+    },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "oil_change",
+        "tyre_rotation",
+        "brake_service",
+        "battery_replacement",
+        "engine_service",
+        "transmission_service",
+        "suspension_repair",
+        "electrical_repair",
+        "body_repair",
+        "inspection",
+        "full_service",
+        "other"
+      ],
+      "description": "Category of the maintenance performed."
+    },
+    "odometer_km": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Odometer reading in kilometres at the time of service."
+    },
+    "parts_replaced": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["part_name"],
+        "properties": {
+          "part_name": {
+            "type": "string",
+            "description": "Name or OEM part number of the replaced part."
+          },
+          "part_number": {
+            "type": "string",
+            "description": "Manufacturer part number (optional)."
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Number of units replaced."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of parts replaced during the service. May be empty if no parts were replaced."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["oem_api", "self_upload", "inspection"],
+      "description": "How the maintenance record was sourced."
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Free-text technician or customer notes (optional)."
+    },
+    "document_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri",
+        "description": "URI pointing to an uploaded invoice, receipt, or inspection report."
+      },
+      "description": "References to supporting documents in object storage (optional)."
+    }
+  },
+  "additionalProperties": false
+}

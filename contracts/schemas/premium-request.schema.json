@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/premium-request/v1.0.0",
+  "title": "Premium Request",
+  "description": "Request payload sent to the pricing-policy service to compute a personalised premium for a vehicle / policy.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "vehicle_id",
+    "policy_id",
+    "score"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Idempotency key for this premium calculation request."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle to price."
+    },
+    "policy_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the existing or prospective policy."
+    },
+    "score": {
+      "$ref": "score.schema.json",
+      "description": "The latest risk score for this vehicle."
+    },
+    "coverage_type": {
+      "type": "string",
+      "enum": ["comprehensive", "third_party", "third_party_fire_theft"],
+      "description": "Requested coverage tier (optional — defaults to current policy coverage)."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of when the quote was requested."
+    }
+  },
+  "additionalProperties": false
+}

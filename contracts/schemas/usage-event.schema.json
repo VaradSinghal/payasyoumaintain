@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/usage-event/v1.0.0",
+  "title": "Usage Event",
+  "description": "Trip-level telematics event emitted by the telematics-usage-ingestion service. Captures a single data point from an in-vehicle OBD-II / IoT device during a trip.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "vehicle_id",
+    "timestamp",
+    "gps",
+    "speed_kmh",
+    "acceleration_ms2",
+    "braking_event"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this telematics event."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle that produced the event."
+    },
+    "trip_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the trip this event belongs to."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of when the event was recorded."
+    },
+    "gps": {
+      "type": "object",
+      "description": "GPS coordinates at the time of the event.",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees."
+        },
+        "altitude_m": {
+          "type": "number",
+          "description": "Altitude in metres above sea level (optional)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "speed_kmh": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Instantaneous speed in kilometres per hour."
+    },
+    "acceleration_ms2": {
+      "type": "number",
+      "description": "Longitudinal acceleration in m/s². Positive = accelerating, negative = decelerating."
+    },
+    "braking_event": {
+      "type": "boolean",
+      "description": "True if a hard-braking event was detected at this data point."
+    }
+  },
+  "additionalProperties": false
+}

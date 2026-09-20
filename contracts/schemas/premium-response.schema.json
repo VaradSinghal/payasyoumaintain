@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.0.0",
+  "title": "Premium Response",
+  "description": "Response payload from the pricing-policy service containing the computed premium breakdown.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "vehicle_id",
+    "policy_id",
+    "base_premium",
+    "dynamic_multiplier",
+    "final_premium",
+    "currency",
+    "computed_at"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Echoed idempotency key from the corresponding premium request."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the priced vehicle."
+    },
+    "policy_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the policy this premium applies to."
+    },
+    "base_premium": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Base premium amount before dynamic adjustments, derived from actuarial tables."
+    },
+    "dynamic_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Multiplier applied to the base premium based on risk scores and behavioural incentives. Values < 1 indicate a discount; > 1 indicate a surcharge."
+    },
+    "final_premium": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Final premium amount (base_premium × dynamic_multiplier), after rounding and regulatory floors/caps."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO-4217 currency code (e.g. 'INR', 'USD', 'GBP')."
+    },
+    "discount_breakdown": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "adjustment_pct"],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Human-readable reason for the adjustment (e.g. 'safe_driving_discount', 'overdue_maintenance_surcharge')."
+          },
+          "adjustment_pct": {
+            "type": "number",
+            "description": "Percentage adjustment. Negative = discount, positive = surcharge."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Itemised breakdown of adjustments that contribute to the dynamic multiplier (optional)."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp after which this quote expires and must be re-computed."
+    },
+    "computed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of when this premium was computed."
+    }
+  },
+  "additionalProperties": false
+}
