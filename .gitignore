@@ -85,3 +85,6 @@ crash.log
 !.env.example
 *.pem
 *.key
+
+
+payasyoumaintain-system-design.docx
