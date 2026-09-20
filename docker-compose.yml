@@ -1,0 +1,122 @@
+# Pay As You Maintain — Docker Compose (Development)
+# ===================================================
+# Usage:  docker compose up -d
+# Docs:   See each service's README for details.
+
+services:
+
+  # ── Shared Infrastructure ──────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: paymu
+      POSTGRES_PASSWORD: paymu_dev
+      POSTGRES_DB: paymu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: paymu-dev-cluster-001
+    ports:
+      - "9092:9092"
+
+  # ── Application Services ───────────────────────────
+
+  identity-consent:
+    build: ./identity-consent
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  telematics-usage-ingestion:
+    build: ./telematics-usage-ingestion
+    ports:
+      - "8082:8080"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  maintenance-vehicle-health-ingestion:
+    build: ./maintenance-vehicle-health-ingestion
+    ports:
+      - "8083:8080"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  risk-scoring-engine:
+    build: ./risk-scoring-engine
+    ports:
+      - "8084:8000"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      ENV: dev
+
+  pricing-policy:
+    build: ./pricing-policy
+    ports:
+      - "8085:8080"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  claims-verification:
+    build: ./claims-verification
+    ports:
+      - "8086:8080"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  notification-advisory:
+    build: ./notification-advisory
+    ports:
+      - "8087:8080"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+  contracts:
+    build: ./contracts
+    ports:
+      - "8088:8080"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+
+volumes:
+  pgdata:

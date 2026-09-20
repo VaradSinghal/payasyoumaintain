@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════
+#  Pay As You Maintain — .gitignore
+# ═══════════════════════════════════════════════════
+
+# ── Java / Spring Boot / Gradle / Maven ───────────
+*.class
+*.jar
+*.war
+*.ear
+*.log
+target/
+build/
+out/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+hs_err_pid*
+replay_pid*
+
+# ── Python ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+.env
+*.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ── Dart / Flutter ────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# ── IDEs & Editors ───────────────────────────────
+.idea/
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ── OS ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ───────────────────────────────────────
+docker-compose.override.yml
+
+# ── Terraform ────────────────────────────────────
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+
+# ── Secrets & Environment ────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
