@@ -1,0 +1,178 @@
+# ─────────────────────────────────────────────────────────────────
+#  Pay As You Maintain — CI Pipeline
+#  Runs on every push and pull request.
+#  Tests all modules and validates shared data contracts.
+# ─────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Java / Spring Boot modules ─────────────────────────────────
+
+  java-tests:
+    name: "Java — ${{ matrix.module }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - identity-consent
+          - telematics-usage-ingestion
+          - maintenance-vehicle-health-ingestion
+          - pricing-policy
+          - claims-verification
+          - notification-advisory
+          - contracts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Check for pom.xml
+        id: check
+        run: |
+          if [ -f "${{ matrix.module }}/pom.xml" ]; then
+            echo "has_pom=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pom=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️  No pom.xml found in ${{ matrix.module }}/ — skipping tests."
+          fi
+
+      - name: Run Maven tests
+        if: steps.check.outputs.has_pom == 'true'
+        working-directory: ${{ matrix.module }}
+        run: mvn --batch-mode --no-transfer-progress test
+
+  # ── Python risk-scoring-engine ─────────────────────────────────
+
+  python-tests:
+    name: "Python — risk-scoring-engine"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: risk-scoring-engine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check for project files
+        id: check
+        run: |
+          if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
+            echo "has_project=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_project=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️  No requirements.txt / pyproject.toml found — skipping tests."
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.has_project == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+          if [ -f "pyproject.toml" ]; then pip install -e ".[test]"; fi
+          pip install pytest
+
+      - name: Run pytest
+        if: steps.check.outputs.has_project == 'true'
+        run: pytest --tb=short -q
+
+  # ── Flutter mobile-app ─────────────────────────────────────────
+
+  flutter-tests:
+    name: "Flutter — mobile-app"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Flutter project directory
+        id: detect
+        run: |
+          if [ -f "mobile-app/pubspec.yaml" ]; then
+            echo "dir=mobile-app" >> "$GITHUB_OUTPUT"
+            echo "has_pubspec=true" >> "$GITHUB_OUTPUT"
+          elif [ -f "mobile_app/pubspec.yaml" ]; then
+            echo "dir=mobile_app" >> "$GITHUB_OUTPUT"
+            echo "has_pubspec=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pubspec=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️  No pubspec.yaml found in mobile-app/ or mobile_app/ — skipping tests."
+          fi
+
+      - name: Set up Flutter
+        if: steps.detect.outputs.has_pubspec == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        if: steps.detect.outputs.has_pubspec == 'true'
+        working-directory: ${{ steps.detect.outputs.dir }}
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        if: steps.detect.outputs.has_pubspec == 'true'
+        working-directory: ${{ steps.detect.outputs.dir }}
+        run: flutter test
+
+  # ── Contract schema validation ─────────────────────────────────
+
+  validate-contracts:
+    name: "Validate JSON Schemas"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install check-jsonschema
+        run: pip install check-jsonschema
+
+      - name: Validate schemas against JSON Schema meta-schema
+        run: |
+          echo "Validating all schema files in contracts/schemas/ ..."
+          FAILED=0
+          for schema in contracts/schemas/*.schema.json; do
+            echo "──────────────────────────────────────"
+            echo "Validating: $schema"
+            if check-jsonschema --check-metaschema "$schema"; then
+              echo "✅  $schema is valid."
+            else
+              echo "❌  $schema FAILED meta-schema validation."
+              FAILED=1
+            fi
+          done
+          echo "══════════════════════════════════════"
+          if [ "$FAILED" -ne 0 ]; then
+            echo "❌  One or more schemas failed validation."
+            exit 1
+          fi
+          echo "✅  All schemas are valid."
