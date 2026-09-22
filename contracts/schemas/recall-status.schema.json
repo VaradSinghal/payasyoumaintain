@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/recall-status/v1.0.0",
+  "title": "Recall Status",
+  "description": "Open recall status for a vehicle, sourced exclusively from the OEM recall database. Produced by maintenance-vehicle-health-ingestion and consumed by risk-scoring-engine.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "has_open_recall",
+    "recall_count",
+    "recall_details",
+    "source",
+    "checked_at"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle whose recall status is reported."
+    },
+    "has_open_recall": {
+      "type": "boolean",
+      "description": "True if the vehicle currently has at least one open, unresolved manufacturer recall."
+    },
+    "recall_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of open recalls against this vehicle."
+    },
+    "recall_details": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["recall_id", "description", "issued_date"],
+        "properties": {
+          "recall_id": {
+            "type": "string",
+            "description": "OEM-assigned recall identifier (e.g. 'RC-2026-0042')."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable summary of the recall scope and risk."
+          },
+          "issued_date": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-8601 date on which the recall was officially issued."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Ordered list of open recall records. Empty array when has_open_recall is false."
+    },
+    "source": {
+      "type": "string",
+      "const": "oem_recall_db",
+      "description": "Identifies that this record originates exclusively from the OEM recall database."
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of when the OEM recall database was last queried for this vehicle."
+    }
+  },
+  "additionalProperties": false
+}

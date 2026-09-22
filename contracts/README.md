@@ -11,13 +11,14 @@ This directory is the **single source of truth** for the data contracts that eve
 
 ## Schemas
 
-| Schema | Producers | Consumers | Description |
-|---|---|---|---|
-| [`usage-event.schema.json`](schemas/usage-event.schema.json) | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
-| [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
-| [`score.schema.json`](schemas/score.schema.json) | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
-| [`premium-request.schema.json`](schemas/premium-request.schema.json) | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
-| [`premium-response.schema.json`](schemas/premium-response.schema.json) | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
+| Schema | Version | Producers | Consumers | Description |
+|---|---|---|---|---|
+| [`usage-event.schema.json`](schemas/usage-event.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
+| [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
+| [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
+| [`score.schema.json`](schemas/score.schema.json) | v1.0.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
+| [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
+| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.0.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 
 ## Versioning Policy
 
@@ -40,6 +41,12 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 > [!CAUTION]
 > **Breaking changes (major bumps) require a migration plan.** You must support the old schema version in parallel for at least one release cycle to allow consumers to migrate gracefully.
 
+## Version Log
+
+| Date | Schema | From | To | Type | Summary |
+|---|---|---|---|---|---|
+| 2026-09-22 | `recall-status.schema.json` | — | v1.0.0 | **New** | Introduced structured recall status schema. Replaces ad-hoc `OPEN RECALL` text parsing in `maintenance-event.notes`. Patch-equivalent additive addition. |
+
 ## Validation Integration
 
 Each tech stack should validate at the service boundary:
@@ -56,6 +63,7 @@ contracts/
 └── schemas/
     ├── usage-event.schema.json
     ├── maintenance-event.schema.json
+    ├── recall-status.schema.json
     ├── score.schema.json
     ├── premium-request.schema.json
     └── premium-response.schema.json
