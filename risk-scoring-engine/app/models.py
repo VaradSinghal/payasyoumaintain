@@ -17,8 +17,8 @@ class MaintenanceEvent(BaseModel):
     odometer_km: int
     parts_replaced: List[PartReplaced] = []
     source: str
-    notes: Optional[str] = None
-    document_refs: List[str] = []
+    notes: Optional[str] = None          # Free-text technician/customer comment only.
+    document_refs: List[str] = []        # Notes are NEVER parsed for recall status.
 
 class ServiceTimeline(BaseModel):
     vehicle_id: str
@@ -26,6 +26,21 @@ class ServiceTimeline(BaseModel):
     latest_service_date: Optional[str] = None
     latest_odometer_km: Optional[int] = None
     events: List[MaintenanceEvent] = []
+
+# --- Recall Models (recall-status.schema.json) ---
+
+class RecallDetail(BaseModel):
+    recall_id: str
+    description: str
+    issued_date: str
+
+class RecallStatus(BaseModel):
+    vehicle_id: str
+    has_open_recall: bool
+    recall_count: int
+    recall_details: List[RecallDetail] = []
+    source: str
+    checked_at: str
 
 # --- Telematics Models ---
 
@@ -46,6 +61,7 @@ class TripAggregate(BaseModel):
 class ScoreRequest(BaseModel):
     service_timeline: Optional[ServiceTimeline] = None
     trip_aggregates: List[TripAggregate] = []
+    recall_status: Optional[RecallStatus] = None  # Structured recall input per recall-status.schema.json
 
 class ContributingFactor(BaseModel):
     factor_name: str

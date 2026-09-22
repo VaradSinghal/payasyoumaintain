@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date, timezone
 from typing import Tuple, List
-from .models import ScoreRequest, ContributingFactor
+from .models import ScoreRequest, ContributingFactor, RecallStatus
 
 MODEL_VERSION = "v1.0.0-stub"
 
@@ -37,15 +37,16 @@ def calculate_maintenance_score(request: ScoreRequest) -> Tuple[float, List[Cont
             description="Vehicle is being serviced regularly."
         ))
         
-    # Check for open recalls noted in inspections
-    open_recalls = [e for e in timeline.events if e.notes and "OPEN RECALL" in e.notes.upper()]
-    if open_recalls:
+    # Check for open recalls via structured recall_status field.
+    # Notes text is NEVER read for this — recall_status.has_open_recall is the sole source.
+    if request.recall_status is not None and request.recall_status.has_open_recall:
+        count = request.recall_status.recall_count
         score -= 30.0
         factors.append(ContributingFactor(
             factor_name="open_recall",
             impact=0.3,
             direction="negative",
-            description="Vehicle has an open manufacturer recall."
+            description=f"Vehicle has {count} open manufacturer recall(s)."
         ))
 
     return max(0.0, score), factors
