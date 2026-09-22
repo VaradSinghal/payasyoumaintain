@@ -2,6 +2,8 @@ package com.paymu.maintenance.service;
 
 import com.paymu.maintenance.model.MaintenanceEvent;
 import com.paymu.maintenance.model.PartReplaced;
+import com.paymu.maintenance.model.RecallDetail;
+import com.paymu.maintenance.model.RecallStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -25,6 +27,11 @@ import java.util.UUID;
 @Service
 public class SyntheticDataGenerator {
 
+    private final RecallStore recallStore;
+
+    public SyntheticDataGenerator(RecallStore recallStore) {
+        this.recallStore = recallStore;
+    }
     static final String[] VEHICLE_IDS = {
             "a1b2c3d4-e5f6-7890-abcd-ef1234567890",   // Perfect maintainer
             "b2c3d4e5-f6a7-8901-bcde-f12345678901",   // Overdue
@@ -34,7 +41,7 @@ public class SyntheticDataGenerator {
     };
 
     /**
-     * Generates all synthetic maintenance events.
+     * Generates all synthetic maintenance events and seeds recall status.
      */
     public List<MaintenanceEvent> generate() {
         LocalDate today = LocalDate.now();
@@ -46,9 +53,38 @@ public class SyntheticDataGenerator {
         all.addAll(generateMixedSources(today));
         all.addAll(generateNewVehicle(today));
 
+        seedRecallData();
+
         return all;
     }
 
+    /**
+     * Seeds the {@link RecallStore} with one real recall for vehicle 3
+     * (missed-interval profile) and clean no-recall records for the rest.
+     * This is the single source of recall truth — maintenance notes no longer
+     * carry recall information.
+     */
+    private void seedRecallData() {
+        // Vehicle 0: Perfect maintainer — no recalls
+        recallStore.seed(VEHICLE_IDS[0], RecallStore.noRecall(VEHICLE_IDS[0]));
+
+        // Vehicle 1: Overdue — no recalls
+        recallStore.seed(VEHICLE_IDS[1], RecallStore.noRecall(VEHICLE_IDS[1]));
+
+        // Vehicle 2: Missed interval — one open recall (battery management)
+        recallStore.seed(VEHICLE_IDS[2], RecallStore.withRecalls(VEHICLE_IDS[2], List.of(
+                new RecallDetail(
+                        "RC-2026-0042",
+                        "Battery management module may fail to isolate the high-voltage pack " +
+                        "during a collision. Risk of thermal runaway.",
+                        "2026-03-15"))));
+
+        // Vehicle 3: Mixed sources — no recalls
+        recallStore.seed(VEHICLE_IDS[3], RecallStore.noRecall(VEHICLE_IDS[3]));
+
+        // Vehicle 4: New vehicle — no recalls
+        recallStore.seed(VEHICLE_IDS[4], RecallStore.noRecall(VEHICLE_IDS[4]));
+    }
     // ── Vehicle 1: Perfect maintainer ──────────────────────────
 
     private List<MaintenanceEvent> generatePerfectMaintainer(LocalDate today) {
@@ -135,12 +171,11 @@ public class SyntheticDataGenerator {
                         part("Oil Filter", "OF-2024A", 1)),
                 "Oil change done. NOTE: Brake service overdue — last inspection flagged worn pads."));
 
-        // Inspection noting open recall
+        // Inspection noting brake service urgency; recall status is modeled separately in RecallStore
         events.add(event(v, today.minusMonths(3), "inspection", 34000, "inspection",
                 List.of(),
-                "Annual inspection. OPEN RECALL: Battery management module (recall #RC-2026-0042). "
-                        + "Brake pads at 15% life — brake service critically overdue. "
-                        + "Customer advised to schedule immediately."));
+                "Annual inspection. Brake pads at 15% life — brake service critically overdue. "
+                        + "Customer advised to schedule immediately. See recall status endpoint for open recalls."));
 
         return events;
     }

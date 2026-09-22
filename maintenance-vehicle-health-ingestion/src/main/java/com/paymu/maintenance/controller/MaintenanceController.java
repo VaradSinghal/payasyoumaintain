@@ -6,6 +6,7 @@ import com.networknt.schema.ValidationMessage;
 import com.paymu.maintenance.model.*;
 import com.paymu.maintenance.service.MaintenanceStore;
 import com.paymu.maintenance.service.OcrStubService;
+import com.paymu.maintenance.service.RecallStore;
 import com.paymu.maintenance.service.SchemaValidationService;
 import com.paymu.maintenance.service.SyntheticDataGenerator;
 import java.util.Map;
@@ -28,6 +29,7 @@ import java.util.Set;
  *   <li>{@code POST /events/self-upload} — self-upload with stub OCR</li>
  *   <li>{@code GET  /timeline/{vehicleId}} — per-vehicle service timeline</li>
  *   <li>{@code GET  /events/{vehicleId}} — raw events for a vehicle</li>
+ *   <li>{@code GET  /recall-status/{vehicleId}} — structured recall status from stub OEM recall DB</li>
  *   <li>{@code POST /generate-synthetic} — generate demo data for 5 vehicles</li>
  * </ul>
  */
@@ -40,17 +42,20 @@ public class MaintenanceController {
     private final SchemaValidationService validationService;
     private final OcrStubService ocrStubService;
     private final MaintenanceStore store;
+    private final RecallStore recallStore;
     private final SyntheticDataGenerator syntheticDataGenerator;
     private final ObjectMapper objectMapper;
 
     public MaintenanceController(SchemaValidationService validationService,
                                   OcrStubService ocrStubService,
                                   MaintenanceStore store,
+                                  RecallStore recallStore,
                                   SyntheticDataGenerator syntheticDataGenerator,
                                   ObjectMapper objectMapper) {
         this.validationService = validationService;
         this.ocrStubService = ocrStubService;
         this.store = store;
+        this.recallStore = recallStore;
         this.syntheticDataGenerator = syntheticDataGenerator;
         this.objectMapper = objectMapper;
     }
@@ -164,6 +169,17 @@ public class MaintenanceController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(events);
+    }
+
+    /**
+     * Returns the structured recall status for a vehicle from the in-memory OEM recall
+     * database stub. Always returns a record — vehicles not in the store return a
+     * clean has_open_recall: false record. Real OEM API integration is Phase 4.
+     */
+    @GetMapping("/recall-status/{vehicleId}")
+    public ResponseEntity<RecallStatus> getRecallStatus(@PathVariable String vehicleId) {
+        RecallStatus status = recallStore.getRecallStatus(vehicleId);
+        return ResponseEntity.ok(status);
     }
 
     /**
