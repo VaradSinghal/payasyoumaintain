@@ -13,29 +13,27 @@ def calculate_maintenance_score(request: ScoreRequest) -> Tuple[float, List[Cont
     factors = []
     
     timeline = request.service_timeline
-    if not timeline or not timeline.events:
-        return score, factors
-    
-    latest_event = sorted(timeline.events, key=lambda e: e.service_date, reverse=True)[0]
-    days_since_service = _days_since(latest_event.service_date)
-    
-    # Check for overdue service (assume > 12 months is overdue)
-    if days_since_service > 365:
-        penalty = min(40.0, (days_since_service - 365) * 0.1)
-        score -= penalty
-        factors.append(ContributingFactor(
-            factor_name="overdue_service",
-            impact=0.4,
-            direction="negative",
-            description=f"Service is overdue by {days_since_service - 365} days."
-        ))
-    else:
-        factors.append(ContributingFactor(
-            factor_name="regular_service",
-            impact=0.2,
-            direction="positive",
-            description="Vehicle is being serviced regularly."
-        ))
+    if timeline and timeline.events:
+        latest_event = sorted(timeline.events, key=lambda e: e.service_date, reverse=True)[0]
+        days_since_service = _days_since(latest_event.service_date)
+        
+        # Check for overdue service (assume > 12 months is overdue)
+        if days_since_service > 365:
+            penalty = min(40.0, (days_since_service - 365) * 0.1)
+            score -= penalty
+            factors.append(ContributingFactor(
+                factor_name="overdue_service",
+                impact=0.4,
+                direction="negative",
+                description=f"Service is overdue by {days_since_service - 365} days."
+            ))
+        else:
+            factors.append(ContributingFactor(
+                factor_name="regular_service",
+                impact=0.2,
+                direction="positive",
+                description="Vehicle is being serviced regularly."
+            ))
         
     # Check for open recalls via structured recall_status field.
     # Notes text is NEVER read for this — recall_status.has_open_recall is the sole source.

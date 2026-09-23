@@ -208,3 +208,45 @@ def test_recall_from_field_not_notes():
         "even when notes text contains 'OPEN RECALL'"
     )
     assert score_b["maintenance_score"] == 100.0
+
+
+# ── Profile 5: Cold-start (brand new, no data) ────────────────────────────────
+
+def test_cold_start_profile():
+    """
+    Brand new policyholder: no service timeline, no trips, no recall status.
+    Must return neutral 100 for both scores and a neutral 'insufficient_data' factor.
+    """
+    vid = "v-new"
+
+    request = ScoreRequest()
+    score = generate_score(vid, request)
+
+    assert score["maintenance_score"] == 100.0
+    assert score["usage_score"] == 100.0
+    assert score["composite_score"] == 100.0
+
+    factors = [f["factor_name"] for f in score["contributing_factors"]]
+    assert "insufficient_data" in factors
+    assert len(factors) == 1
+
+def test_cold_start_with_recall():
+    """
+    Brand new policyholder with NO service timeline, but OEM DB indicates
+    an open recall. The penalty must still apply despite timeline being missing.
+    """
+    vid = "v-new-recall"
+    
+    request = ScoreRequest(
+        recall_status=make_recall_status(vid, has_open=True, recalls=[
+            RecallDetail(recall_id="RC-123", description="Fix", issued_date="2026")
+        ])
+    )
+    score = generate_score(vid, request)
+    
+    assert score["maintenance_score"] < 100.0
+    assert score["usage_score"] == 100.0
+    
+    factors = [f["factor_name"] for f in score["contributing_factors"]]
+    assert "open_recall" in factors
+
