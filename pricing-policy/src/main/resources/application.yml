@@ -1,0 +1,18 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: pricing-policy
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+
+# Downstream service URLs — override via environment variables in docker-compose
+services:
+  telematics-url: http://localhost:8082/api/v1
+  maintenance-url: http://localhost:8083/api/v1
+  scoring-url: http://localhost:8084
