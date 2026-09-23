@@ -1,0 +1,21 @@
+server:
+  port: 8087
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: notification-advisory
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+
+services:
+  maintenance-url: http://localhost:8083/api/v1
+  scoring-url: http://localhost:8084
+
+advisory:
+  # Thresholds — externalised so product can tune without a code change
+  overdue-service-days: 365          # Days since last service before flagging overdue
+  low-score-threshold: 60.0          # Composite score below which a score advisory fires
