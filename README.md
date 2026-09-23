@@ -186,6 +186,41 @@ final_premium = round(od_premium × dynamic_mult)
 
 ---
 
+### ✅ `claims-verification` — Port 8086
+**Stack:** Java 21 / Spring Boot 3.3
+
+First Notice of Loss (FNOL) intake and automated claim triage. Each FNOL is correlated against the vehicle's verified service history to determine whether it can proceed automatically or requires a human investigator.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/fnol` | `POST` | Submit a First Notice of Loss |
+| `/api/v1/claims/{claimId}` | `GET` | Retrieve a submitted claim and its triage decision |
+
+**FNOL request fields:** `vehicle_id`, `policy_id`, `incident_date`, `incident_description`, `claimed_cause` (enum: `mechanical_failure` \| `collision` \| `theft` \| `natural_disaster` \| `vandalism` \| `other`), `photo_refs[]`, `location`.
+
+**Triage rule:**
+```
+IF  claimed_cause == "mechanical_failure"
+AND vehicle has a clean service record within the last 90 days
+THEN → MANUAL_REVIEW
+ELSE → STRAIGHT_THROUGH_PROCESSING
+```
+
+**Rationale:** A vehicle that recently passed a clean service inspection is unlikely to suffer immediate mechanical failure through normal wear. A mechanical failure claim immediately after a clean service is a statistical anomaly that warrants investigator review before payment authorisation.
+
+**Key design decisions:**
+- `ClaimedCause` is a Java enum — invalid values are rejected at the JSON parsing layer with a structured 400, not by application logic.
+- "Clean" service is conservative: any service event with no notes, or notes free of defect keywords (`critically overdue`, `worn`, `open recall`, `defect`, `failed`), is treated as clean. Benefit of the doubt goes to the claimant.
+- The 90-day window is externalised to `claims.clean-service-window-days` in `application.yml` — actuaries can adjust it without a code change.
+- Downstream maintenance call degrades gracefully: unavailable maintenance service → STP, not an error.
+
+---
+
+### 🔲 `notification-advisory` — Port 8087 *(Phase 2 — in progress)*
+Pushes maintenance reminders, score change alerts, and premium adjustment notifications to vehicle owners.
+
+---
+
 ## Shared Contracts
 
 All inter-service data contracts are defined as JSON Schema Draft 2020-12 files in `/contracts/schemas`. Every service validates incoming and outgoing payloads against these schemas at its boundary.
@@ -210,7 +245,7 @@ All inter-service data contracts are defined as JSON Schema Draft 2020-12 files 
 
 GitHub Actions workflow at `.github/workflows/ci.yml` runs on every push and pull request:
 
-- `mvn test` for each Java service (identity-consent, telematics-usage-ingestion, maintenance-vehicle-health-ingestion, pricing-policy)
+- `mvn test` for each Java service (identity-consent, telematics-usage-ingestion, maintenance-vehicle-health-ingestion, pricing-policy, claims-verification)
 - `pytest` for risk-scoring-engine
 - `flutter test` for mobile-app
 - JSON Schema meta-schema validation for all files in `/contracts/schemas`
@@ -228,7 +263,8 @@ Build fails on any test failure or schema validation error.
 | `maintenance-vehicle-health-ingestion` | 31 | Schema validation (19), OCR stub, store CRUD/ordering, vehicle isolation |
 | `risk-scoring-engine` | 6 | Good/bad/borderline profiles, recall field authority (not notes), cold-start |
 | `pricing-policy` | 8 | Cold-start neutral, score→multiplier interpolation, maintenance score → premium ordering, NCB, response shape |
-| **Total** | **78** | |
+| `claims-verification` | 8 | MANUAL_REVIEW path, STP paths (old service, no history, defect notes, non-mechanical, empty timeline, all cause variants), 90-day window boundary |
+| **Total** | **86** | |
 
 ---
 
@@ -314,7 +350,7 @@ docker compose up -d
 | Phase | Scope |
 |---|---|
 | **Phase 1** ✅ | Core ingestion, scoring, and pricing services |
-| **Phase 2** 🔲 | `claims-verification` service, `notification-advisory` service |
+| **Phase 2** 🔄 | `claims-verification` ✅ · `notification-advisory` 🔲 |
 | **Phase 3** 🔲 | Flutter mobile app — policy dashboard, maintenance reminders, score history |
 | **Phase 4** 🔲 | Real persistence (PostgreSQL/Firestore), real OEM recall API integration, real OCR |
 | **Phase 5** 🔲 | Kafka-based event streaming, feature store (Feast), ML model training pipeline |
@@ -342,7 +378,7 @@ payasyoumaintain/
 ├── maintenance-vehicle-health-ingestion/ # Spring Boot · port 8083
 ├── risk-scoring-engine/               # FastAPI (Python) · port 8084
 ├── pricing-policy/                    # Spring Boot · port 8085
-├── claims-verification/               # Spring Boot · port TBD [Phase 2]
+├── claims-verification/               # Spring Boot · port 8086
 ├── notification-advisory/             # Spring Boot · port TBD [Phase 2]
 ├── mobile-app/                        # Flutter [Phase 3]
 ├── infra/                             # Terraform / Docker [Phase 4]
