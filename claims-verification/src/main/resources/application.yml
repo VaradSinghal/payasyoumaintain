@@ -1,0 +1,20 @@
+server:
+  port: 8086
+  servlet:
+    context-path: /api/v1
+
+spring:
+  application:
+    name: claims-verification
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+
+services:
+  maintenance-url: http://localhost:8083/api/v1
+
+claims:
+  # Days within which a recent clean service makes a "mechanical failure" claim
+  # suspicious enough to warrant manual review rather than straight-through processing.
+  clean-service-window-days: 90
