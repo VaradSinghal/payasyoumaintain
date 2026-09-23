@@ -216,8 +216,33 @@ ELSE → STRAIGHT_THROUGH_PROCESSING
 
 ---
 
-### 🔲 `notification-advisory` — Port 8087 *(Phase 2 — in progress)*
-Pushes maintenance reminders, score change alerts, and premium adjustment notifications to vehicle owners.
+### ✅ `notification-advisory` — Port 8087
+**Stack:** Java 21 / Spring Boot 3.3
+
+Generates a prioritised list of plain-language advisory messages for a vehicle owner by correlating live recall status, service timeline, and risk score data. Stubs SMS/push delivery as a structured console log, ready for a real FCM/SNS swap in Phase 4.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/advisories/{vehicleId}` | `GET` | Generate and deliver a prioritised advisory list |
+
+**Advisory types and priorities:**
+
+| Type | Priority | Trigger |
+|---|---|---|
+| `OPEN_RECALL` | CRITICAL | `recall_status.has_open_recall == true` |
+| `OVERDUE_SERVICE` | HIGH | Last service > 365 days ago |
+| `NO_SERVICE_RECORD` | HIGH | Vehicle has zero service records on file |
+| `LOW_RISK_SCORE` | MEDIUM | Composite score < 60 |
+| `SAFE_DRIVING_COMMENDATION` | LOW | Composite score ≥ 90 (positive reinforcement) |
+
+The returned list is sorted CRITICAL → HIGH → MEDIUM → LOW. An empty list is a valid response — it means the vehicle has no outstanding flags.
+
+**Data flow:** fetches service timeline and recall status from the maintenance service (:8083), then passes that data directly to the risk-scoring-engine (:8084) — avoiding redundant downstream pulls. Trip aggregates are omitted from the advisory score call (neutral cold-start), since usage-pattern coaching is not in scope for this service.
+
+**Key design decisions:**
+- All thresholds (`overdue-service-days: 365`, `low-score-threshold: 60.0`) are externalised to `application.yml` — product can tune them without a code change.
+- `NotificationDeliveryService` is a separate `@Service` bean, currently logging to console. Phase 4 replaces the bean with real FCM/SNS — no controller or generator changes needed.
+- Each advisory rule is independently nullable-input-safe: if any upstream call fails, that rule is skipped rather than failing the entire response.
 
 ---
 
@@ -245,7 +270,7 @@ All inter-service data contracts are defined as JSON Schema Draft 2020-12 files 
 
 GitHub Actions workflow at `.github/workflows/ci.yml` runs on every push and pull request:
 
-- `mvn test` for each Java service (identity-consent, telematics-usage-ingestion, maintenance-vehicle-health-ingestion, pricing-policy, claims-verification)
+- `mvn test` for each Java service (identity-consent, telematics-usage-ingestion, maintenance-vehicle-health-ingestion, pricing-policy, claims-verification, notification-advisory)
 - `pytest` for risk-scoring-engine
 - `flutter test` for mobile-app
 - JSON Schema meta-schema validation for all files in `/contracts/schemas`
@@ -264,7 +289,8 @@ Build fails on any test failure or schema validation error.
 | `risk-scoring-engine` | 6 | Good/bad/borderline profiles, recall field authority (not notes), cold-start |
 | `pricing-policy` | 8 | Cold-start neutral, score→multiplier interpolation, maintenance score → premium ordering, NCB, response shape |
 | `claims-verification` | 8 | MANUAL_REVIEW path, STP paths (old service, no history, defect notes, non-mechanical, empty timeline, all cause variants), 90-day window boundary |
-| **Total** | **86** | |
+| `notification-advisory` | 8 | Open-recall CRITICAL advisory, overdue-service HIGH advisory, empty healthy-vehicle case, low score MEDIUM, priority ordering, all-null cold-start, no-record HIGH, commendation LOW |
+| **Total** | **94** | |
 
 ---
 
@@ -350,9 +376,9 @@ docker compose up -d
 | Phase | Scope |
 |---|---|
 | **Phase 1** ✅ | Core ingestion, scoring, and pricing services |
-| **Phase 2** 🔄 | `claims-verification` ✅ · `notification-advisory` 🔲 |
+| **Phase 2** ✅ | `claims-verification` · `notification-advisory` |
 | **Phase 3** 🔲 | Flutter mobile app — policy dashboard, maintenance reminders, score history |
-| **Phase 4** 🔲 | Real persistence (PostgreSQL/Firestore), real OEM recall API integration, real OCR |
+| **Phase 4** 🔲 | Real persistence (PostgreSQL/Firestore), real OEM recall API integration, real OCR, FCM/SNS delivery |
 | **Phase 5** 🔲 | Kafka-based event streaming, feature store (Feast), ML model training pipeline |
 
 ---
@@ -379,7 +405,7 @@ payasyoumaintain/
 ├── risk-scoring-engine/               # FastAPI (Python) · port 8084
 ├── pricing-policy/                    # Spring Boot · port 8085
 ├── claims-verification/               # Spring Boot · port 8086
-├── notification-advisory/             # Spring Boot · port TBD [Phase 2]
+├── notification-advisory/             # Spring Boot · port 8087
 ├── mobile-app/                        # Flutter [Phase 3]
 ├── infra/                             # Terraform / Docker [Phase 4]
 └── docker-compose.yml                 # Full-stack local orchestration
