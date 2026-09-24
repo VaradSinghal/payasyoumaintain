@@ -7,6 +7,11 @@ from .scoring import generate_score
 
 app = FastAPI(title="Risk Scoring Engine")
 
+@app.get("/health")
+def health():
+    """Docker / load-balancer health probe."""
+    return {"status": "UP"}
+
 # Load the schema on startup
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'contracts', 'schemas', 'score.schema.json')
 

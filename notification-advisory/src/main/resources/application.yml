@@ -12,10 +12,19 @@ spring:
       write-dates-as-timestamps: false
 
 services:
-  maintenance-url: http://localhost:8083/api/v1
-  scoring-url: http://localhost:8084
+  maintenance-url: ${MAINTENANCE_URL:http://localhost:8083/api/v1}
+  scoring-url: ${SCORING_URL:http://localhost:8084}
 
 advisory:
   # Thresholds — externalised so product can tune without a code change
   overdue-service-days: 365          # Days since last service before flagging overdue
   low-score-threshold: 60.0          # Composite score below which a score advisory fires
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

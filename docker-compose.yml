@@ -1,27 +1,59 @@
-# Pay As You Maintain — Docker Compose (Development)
-# ===================================================
-# Usage:  docker compose up -d
-# Docs:   See each service's README for details.
+# ─────────────────────────────────────────────────────────────────────────────
+#  Pay As You Maintain — Docker Compose (Development Stack)
+#  Usage:  docker compose up -d
+#
+#  Build context is always the monorepo root so each Dockerfile can COPY
+#  contracts/schemas alongside the service source.
+#
+#  Start order (depends_on + condition: service_healthy):
+#
+#    ┌── postgres ──┐  ┌── redis ──┐  ┌── kafka ──┐
+#    │              │  │           │  │           │
+#    ▼              ▼  ▼           ▼  ▼           ▼
+#    identity-consent  telematics  maintenance
+#                         │            │
+#                         └─────┬──────┘
+#                               ▼
+#                        risk-scoring-engine
+#                               │
+#               ┌───────────────┼───────────────┐
+#               ▼               ▼               ▼
+#         pricing-policy  claims-verification  notification-advisory
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: paymu
 
 services:
 
-  # ── Shared Infrastructure ──────────────────────────
+  # ── Shared Infrastructure ─────────────────────────────────────────────────
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: paymu
+      POSTGRES_USER:     paymu
       POSTGRES_PASSWORD: paymu_dev
-      POSTGRES_DB: paymu
+      POSTGRES_DB:       paymu
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paymu -d paymu"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -34,89 +66,175 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       CLUSTER_ID: paymu-dev-cluster-001
     ports:
       - "9092:9092"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      # kafka-broker-api-versions exits 0 when the broker is ready to accept connections
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
 
-  # ── Application Services ───────────────────────────
+  # ── Tier 1 — No app-level dependencies ───────────────────────────────────
 
   identity-consent:
-    build: ./identity-consent
+    build:
+      context: .
+      dockerfile: identity-consent/Dockerfile
     ports:
-      - "8081:8080"
+      - "8081:8081"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+      # Phase 4: uncomment and set once PostgreSQL wired up
+      # SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymu
+      # SPRING_DATASOURCE_USERNAME: paymu
+      # SPRING_DATASOURCE_PASSWORD: paymu_dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
   telematics-usage-ingestion:
-    build: ./telematics-usage-ingestion
+    build:
+      context: .
+      dockerfile: telematics-usage-ingestion/Dockerfile
     ports:
-      - "8082:8080"
+      - "8082:8082"
     depends_on:
-      - postgres
-      - kafka
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
   maintenance-vehicle-health-ingestion:
-    build: ./maintenance-vehicle-health-ingestion
+    build:
+      context: .
+      dockerfile: maintenance-vehicle-health-ingestion/Dockerfile
     ports:
-      - "8083:8080"
+      - "8083:8083"
     depends_on:
-      - postgres
-      - kafka
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+
+  # ── Tier 2 — Depends on ingestion services ────────────────────────────────
 
   risk-scoring-engine:
-    build: ./risk-scoring-engine
+    build:
+      context: .
+      dockerfile: risk-scoring-engine/Dockerfile
     ports:
-      - "8084:8000"
-    depends_on:
-      - postgres
-      - kafka
+      - "8084:8084"
+    # The scoring engine is stateless — it only needs to be reachable itself.
+    # No hard depends_on on ingestion services since it receives data as input.
     environment:
-      ENV: dev
+      ENV: docker
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  # ── Tier 3 — Depends on ingestion + scoring ───────────────────────────────
 
   pricing-policy:
-    build: ./pricing-policy
+    build:
+      context: .
+      dockerfile: pricing-policy/Dockerfile
     ports:
-      - "8085:8080"
+      - "8085:8085"
     depends_on:
-      - postgres
+      telematics-usage-ingestion:
+        condition: service_healthy
+      maintenance-vehicle-health-ingestion:
+        condition: service_healthy
+      risk-scoring-engine:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+      TELEMATICS_URL:   http://telematics-usage-ingestion:8082/api/v1
+      MAINTENANCE_URL:  http://maintenance-vehicle-health-ingestion:8083/api/v1
+      SCORING_URL:      http://risk-scoring-engine:8084
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
   claims-verification:
-    build: ./claims-verification
+    build:
+      context: .
+      dockerfile: claims-verification/Dockerfile
     ports:
-      - "8086:8080"
+      - "8086:8086"
     depends_on:
-      - postgres
-      - kafka
+      maintenance-vehicle-health-ingestion:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+      MAINTENANCE_URL: http://maintenance-vehicle-health-ingestion:8083/api/v1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
   notification-advisory:
-    build: ./notification-advisory
+    build:
+      context: .
+      dockerfile: notification-advisory/Dockerfile
     ports:
-      - "8087:8080"
+      - "8087:8087"
     depends_on:
-      - postgres
-      - kafka
+      maintenance-vehicle-health-ingestion:
+        condition: service_healthy
+      risk-scoring-engine:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: docker
+      MAINTENANCE_URL: http://maintenance-vehicle-health-ingestion:8083/api/v1
+      SCORING_URL:     http://risk-scoring-engine:8084
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
 
-  contracts:
-    build: ./contracts
-    ports:
-      - "8088:8080"
-    depends_on:
-      - postgres
-    environment:
-      SPRING_PROFILES_ACTIVE: dev
+# ─────────────────────────────────────────────────────────────────────────────
 
 volumes:
   pgdata:
+  kafkadata:

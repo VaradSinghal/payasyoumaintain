@@ -16,3 +16,12 @@ telematics:
   # Time gap (in minutes) between consecutive events that triggers
   # automatic trip segmentation when trip_id is absent.
   trip-gap-minutes: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
