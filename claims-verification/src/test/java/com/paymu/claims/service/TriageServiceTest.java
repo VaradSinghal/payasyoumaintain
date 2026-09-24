@@ -12,7 +12,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for {@link TriageService}.
  *
- * <p>All tests are pure in-process — no Spring context, no HTTP calls.</p>
+ * <p>All tests are pure in-process — no Spring context, no HTTP calls.
+ * The service signature is {@code triage(FnolRequest, ServiceTimeline, RecallStatus)}.</p>
  */
 @DisplayName("TriageService")
 class TriageServiceTest {
@@ -22,7 +23,6 @@ class TriageServiceTest {
     @BeforeEach
     void setUp() {
         triageService = new TriageService();
-        // Inject the 90-day window directly without a Spring context
         ReflectionTestUtils.setField(triageService, "cleanServiceWindowDays", 90);
     }
 
@@ -62,20 +62,39 @@ class TriageServiceTest {
         );
     }
 
-    // ── Flagged path: MANUAL_REVIEW ───────────────────────────────────────────
+    /** A RecallStatus with has_open_recall = true. */
+    private RecallStatus openRecall() {
+        return new RecallStatus(
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                true, 1,
+                List.of(new RecallStatus.RecallDetail(
+                        "RC-2026-0042", "Battery management thermal risk", "2026-03-15")),
+                "oem_recall_db", "2026-09-24T05:00:00Z"
+        );
+    }
+
+    /** A RecallStatus with has_open_recall = false. */
+    private RecallStatus noRecall() {
+        return new RecallStatus(
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                false, 0, List.of(), "oem_recall_db", "2026-09-24T05:00:00Z"
+        );
+    }
+
+    // ── MANUAL_REVIEW paths ───────────────────────────────────────────────────
 
     @Test
     @DisplayName("MANUAL_REVIEW: mechanical failure + clean service within 90 days")
     void mechanicalFailure_withRecentCleanService_isManualReview() {
         FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-        ServiceTimeline tl = timeline(event(30, null));  // clean, 30 days ago
+        ServiceTimeline tl  = timeline(event(30, null));  // clean, 30 days ago
 
-        TriageService.TriageResult result = triageService.triage(request, tl);
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
 
         assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
         assertTrue(result.reasons().stream().anyMatch(r -> r.contains("clean service record")),
                 "Reasons should explain the clean-service finding");
-        assertTrue(result.maintenanceSignal().contains("Clean service found"),
+        assertTrue(result.maintenanceSignal().contains("clean service within"),
                 "maintenanceSignal should describe the window match");
     }
 
@@ -83,88 +102,138 @@ class TriageServiceTest {
     @DisplayName("MANUAL_REVIEW: clean service exactly at window boundary (90 days) still flags")
     void mechanicalFailure_cleanServiceAtWindowEdge_isManualReview() {
         FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-        // Exactly 90 days ago → still within the window (not before windowStart)
-        ServiceTimeline tl = timeline(event(90, "Routine oil change."));
+        ServiceTimeline tl  = timeline(event(90, "Routine oil change."));
 
-        TriageService.TriageResult result = triageService.triage(request, tl);
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
 
         assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
     }
 
-    // ── Fast-tracked path: STRAIGHT_THROUGH_PROCESSING ───────────────────────
+    /**
+     * Core requirement: an open recall triggers MANUAL_REVIEW entirely from the
+     * structured RecallStatus field — even with no service records and no notes whatsoever.
+     * This proves that recall detection is NOT based on note text.
+     */
+    @Test
+    @DisplayName("MANUAL_REVIEW: open_recall_on_file triggers flag — notes play no role")
+    void openRecall_triggersManualReview_independentOfNotes() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        // Old service outside the 90-day window, and no recall-related text in notes
+        ServiceTimeline tl = timeline(event(200, "Routine oil change completed normally."));
+
+        TriageService.TriageResult result = triageService.triage(request, tl, openRecall());
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision(),
+                "has_open_recall: true must trigger MANUAL_REVIEW regardless of notes");
+
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("open_recall_on_file")),
+                "triage_reasons must contain a distinct 'open_recall_on_file' entry");
+
+        // Confirm the clean-service signal did NOT fire (old service outside window)
+        assertFalse(result.reasons().stream().anyMatch(r -> r.contains("clean service record")),
+                "Clean-service reason must NOT appear when service is outside the window");
+    }
 
     @Test
-    @DisplayName("STP: non-mechanical cause (collision) skips maintenance check entirely")
+    @DisplayName("MANUAL_REVIEW: both signals fire independently — both reasons present")
+    void bothSignals_bothReasonsPresent() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(30, null));   // recent clean service
+
+        TriageService.TriageResult result = triageService.triage(request, tl, openRecall());
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("open_recall_on_file")),
+                "open_recall_on_file reason should be present");
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("clean service record")),
+                "clean service record reason should also be present");
+    }
+
+    // ── STP paths ─────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("STP: non-mechanical cause (collision) skips all maintenance checks")
     void collision_isAlwaysStraightThrough() {
         FnolRequest request = fnol(ClaimedCause.COLLISION);
-        // Even with recent clean service — should be STP
-        ServiceTimeline tl = timeline(event(10, null));
+        ServiceTimeline tl  = timeline(event(10, null));
 
-        TriageService.TriageResult result = triageService.triage(request, tl);
-
-        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
-        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("does not trigger")),
-                "Reasons should explain cause is not mechanical_failure");
-    }
-
-    @Test
-    @DisplayName("STP: mechanical failure claimed but service was > 90 days ago")
-    void mechanicalFailure_oldService_isStraightThrough() {
-        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-        ServiceTimeline tl = timeline(event(120, null));  // 120 days ago — outside window
-
-        TriageService.TriageResult result = triageService.triage(request, tl);
-
-        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
-        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("No clean service record")));
-    }
-
-    @Test
-    @DisplayName("STP: mechanical failure claimed with no service history at all")
-    void mechanicalFailure_noServiceHistory_isStraightThrough() {
-        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-
-        TriageService.TriageResult result = triageService.triage(request, null);
-
-        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
-        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("No service history")));
-    }
-
-    @Test
-    @DisplayName("STP: mechanical failure + recent service but notes indicate defect — NOT clean")
-    void mechanicalFailure_recentServiceWithDefectNotes_isStraightThrough() {
-        // Service was recent but the notes flagged a critical problem → not a clean record
-        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-        ServiceTimeline tl = timeline(event(20,
-                "Oil change done. NOTE: Brake service critically overdue — worn pads detected."));
-
-        TriageService.TriageResult result = triageService.triage(request, tl);
+        TriageService.TriageResult result = triageService.triage(request, tl, openRecall());
 
         assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision(),
-                "A recent service with defect notes is NOT a clean service — should be STP");
+                "Non-mechanical cause must skip maintenance + recall checks");
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("does not trigger")));
     }
 
     @Test
-    @DisplayName("STP: mechanical failure + empty timeline events list")
-    void mechanicalFailure_emptyTimeline_isStraightThrough() {
+    @DisplayName("STP: mechanical failure, service > 90 days ago, no open recall")
+    void mechanicalFailure_oldService_noRecall_isStraightThrough() {
         FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
-        ServiceTimeline emptyTl = new ServiceTimeline(
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890", 0, null, null, List.of());
+        ServiceTimeline tl  = timeline(event(120, null));   // outside window
 
-        TriageService.TriageResult result = triageService.triage(request, emptyTl);
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
+
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("No open recall")));
+    }
+
+    @Test
+    @DisplayName("STP: mechanical failure with no service history and no recall")
+    void mechanicalFailure_noHistory_noRecall_isStraightThrough() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+
+        TriageService.TriageResult result = triageService.triage(request, null, null);
 
         assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
     }
 
     @Test
-    @DisplayName("STP: theft and other non-mechanical causes skip check")
+    @DisplayName("STP: mechanical failure + recent service with defect notes (NOT clean) + no recall")
+    void mechanicalFailure_recentDefectService_noRecall_isStraightThrough() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(20,
+                "Oil change done. NOTE: Brake service critically overdue — worn pads detected."));
+
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
+
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision(),
+                "Defect notes mean service is NOT clean — should be STP with no recall");
+    }
+
+    @Test
+    @DisplayName("STP: mechanical failure + recent service with 'open recall' in notes — notes NOT parsed for recall")
+    void openRecallInNotes_doesNotTriggerManualReview() {
+        // The word "open recall" appears in notes. If we were still doing text-matching,
+        // this would have incorrectly marked the service as not-clean and routed to STP.
+        // Now that "open recall" is removed from DEFECT_KEYWORDS:
+        //   - The service IS clean (only non-recall defect keywords are checked)
+        //   - recall=noRecall() → has_open_recall: false
+        // Result: MANUAL_REVIEW fires because the service IS clean and within window.
+        // This confirms notes text is no longer parsed for recall status.
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(20,
+                "Service completed. Reminder: OEM sent open recall notice RC-2026-0042."));
+
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
+
+        // The service is clean (open recall note is no longer a defect keyword),
+        // so the clean-service window fires → MANUAL_REVIEW.
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision(),
+                "Notes mentioning recall no longer disqualify the service as clean; "
+                        + "clean-service window fires → MANUAL_REVIEW");
+        assertFalse(result.reasons().stream().anyMatch(r -> r.contains("open_recall_on_file")),
+                "open_recall_on_file must NOT appear — recall came from noRecall() endpoint, not notes");
+    }
+
+    @Test
+    @DisplayName("STP: theft and other non-mechanical causes skip check even with open recall")
     void nonMechanicalCauses_areAlwaysStraightThrough() {
         for (ClaimedCause cause : List.of(ClaimedCause.THEFT, ClaimedCause.NATURAL_DISASTER,
                 ClaimedCause.VANDALISM, ClaimedCause.OTHER)) {
             FnolRequest request = fnol(cause);
-            TriageService.TriageResult result = triageService.triage(request, timeline(event(5, null)));
+            TriageService.TriageResult result = triageService.triage(
+                    request, timeline(event(5, null)), openRecall());
             assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision(),
-                    "Cause " + cause + " should be STP");
+                    "Cause " + cause + " should be STP regardless of recall status");
         }
     }
 }

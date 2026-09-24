@@ -15,47 +15,67 @@ import java.util.List;
  * Core FNOL triage logic.
  *
  * <h3>Triage rule</h3>
- * <pre>
- * IF claimed_cause == MECHANICAL_FAILURE
- *   AND there is a clean service record within the last {window} days
- * THEN → MANUAL_REVIEW
- *      (a vehicle just passed a recent service is unlikely to have suffered
- *       mechanical failure immediately after; warrants investigation)
- * ELSE → STRAIGHT_THROUGH_PROCESSING
- * </pre>
+ * <p>For a {@code MECHANICAL_FAILURE} claim, route to {@code MANUAL_REVIEW} if
+ * <em>either</em> of the following is true:</p>
+ * <ol>
+ *   <li>The vehicle has a <em>clean</em> service record within the last
+ *       {@code claims.clean-service-window-days} days (default 90).</li>
+ *   <li>The structured recall-status endpoint reports
+ *       {@code has_open_recall: true}.</li>
+ * </ol>
+ * <p>Both conditions are evaluated independently and produce separate entries
+ * in {@code triage_reasons} so investigators can see exactly what triggered
+ * the flag.</p>
  *
- * <p>"Clean" means the service record has no notes flagging a critical defect
- * (e.g. no note containing "critically overdue", "open recall", "worn" etc.).
- * This is a best-effort text check on the notes field — the definitive recall
- * signal comes from the RecallStore, not here.</p>
+ * <h3>What "clean" means</h3>
+ * <p>A service event is clean if its {@code notes} field is absent, blank, or
+ * contains none of the defect keywords: {@code "critically overdue"},
+ * {@code "worn"}, {@code "defect"}, {@code "failed"}.</p>
  *
- * <p>The window defaults to 90 days and is externally configurable via
- * {@code claims.clean-service-window-days}.</p>
+ * <p><strong>Note:</strong> {@code "open recall"} has been deliberately removed
+ * from the defect keyword list. Recall status is a first-class structured
+ * resource ({@code RecallStatus.hasOpenRecall}), fetched from
+ * {@code GET /recall-status/{vehicleId}} and evaluated as a separate triage
+ * condition. Free-text notes are never parsed for recall signals.</p>
+ *
+ * <h3>Non-mechanical causes</h3>
+ * <p>All causes other than {@code MECHANICAL_FAILURE} bypass the maintenance
+ * and recall checks entirely and proceed directly to
+ * {@code STRAIGHT_THROUGH_PROCESSING}.</p>
  */
 @Service
 public class TriageService {
 
     private static final Logger log = LoggerFactory.getLogger(TriageService.class);
 
-    /** Keywords in event notes that mark a service as NOT clean. */
+    /**
+     * Keywords in event notes that mark a service as NOT clean.
+     *
+     * <p>"open recall" is intentionally absent — recall status comes from the
+     * structured {@link RecallStatus} object, not from text parsing.</p>
+     */
     private static final List<String> DEFECT_KEYWORDS =
-            List.of("critically overdue", "worn", "open recall", "defect", "failed");
+            List.of("critically overdue", "worn", "defect", "failed");
 
     @Value("${claims.clean-service-window-days:90}")
     private int cleanServiceWindowDays;
 
     /**
-     * Determines the triage decision for an FNOL request given the optional service timeline.
+     * Determines the triage decision for an FNOL given the service timeline
+     * and recall status fetched from the maintenance service.
      *
      * @param request  the incoming FNOL
-     * @param timeline the vehicle's service timeline from maintenance-vehicle-health-ingestion,
-     *                 or {@code null} if the maintenance service was unavailable
+     * @param timeline service timeline, or {@code null} if unavailable
+     * @param recall   recall status, or {@code null} if unavailable
      * @return triage outcome with reasons
      */
-    public TriageResult triage(FnolRequest request, ServiceTimeline timeline) {
+    public TriageResult triage(FnolRequest request,
+                               ServiceTimeline timeline,
+                               RecallStatus recall) {
         List<String> reasons = new ArrayList<>();
         String maintenanceSignal;
 
+        // ── Non-mechanical cause → skip all maintenance checks ────────────────
         if (request.claimedCause() != ClaimedCause.MECHANICAL_FAILURE) {
             reasons.add("Claimed cause '" + request.claimedCause().getValue()
                     + "' does not trigger maintenance-correlation check.");
@@ -63,54 +83,96 @@ public class TriageService {
             return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
         }
 
-        // Claimed cause IS mechanical failure — look for a clean recent service
+        // ── Mechanical failure — evaluate both signals ─────────────────────────
+        boolean flagForRecall       = evaluateRecall(recall, reasons);
+        boolean flagForCleanService = evaluateCleanService(timeline, reasons);
+
+        if (flagForRecall || flagForCleanService) {
+            // Compose the maintenance signal summary
+            List<String> signals = new ArrayList<>();
+            if (flagForRecall)       signals.add("open recall on file");
+            if (flagForCleanService) signals.add("clean service within " + cleanServiceWindowDays + "-day window");
+            maintenanceSignal = String.join("; ", signals) + ".";
+
+            log.info("FNOL for vehicle {} → MANUAL_REVIEW [recall={}, cleanService={}]",
+                    request.vehicleId(), flagForRecall, flagForCleanService);
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+        }
+
+        // ── Neither signal fired → plausible, STP ─────────────────────────────
+        reasons.add("Claimed cause is 'mechanical_failure'.");
+        reasons.add("No open recall on file and no clean service record found within the last "
+                + cleanServiceWindowDays + " days — claim is plausible.");
+        maintenanceSignal = "No disqualifying maintenance signals found.";
+        return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
+    }
+
+    // ── Recall evaluation ─────────────────────────────────────────────────────
+
+    /**
+     * Checks the structured recall status. Adds a distinct {@code "open_recall_on_file"}
+     * reason entry if triggered. Returns true if this signal alone is sufficient to
+     * route to MANUAL_REVIEW.
+     */
+    private boolean evaluateRecall(RecallStatus recall, List<String> reasons) {
+        if (recall != null && recall.hasOpenRecall()) {
+            reasons.add("Claimed cause is 'mechanical_failure'.");
+            reasons.add("open_recall_on_file: vehicle has " + recall.recallCount()
+                    + " open manufacturer recall(s) — a pending recall increases mechanical failure"
+                    + " plausibility and requires investigator review.");
+            return true;
+        }
+        return false;
+    }
+
+    // ── Clean-service evaluation ──────────────────────────────────────────────
+
+    /**
+     * Checks whether a clean service exists within the configured window.
+     * Adds reason entries if triggered. Returns true if this signal alone
+     * is sufficient to route to MANUAL_REVIEW.
+     */
+    private boolean evaluateCleanService(ServiceTimeline timeline, List<String> reasons) {
         if (timeline == null || timeline.events() == null || timeline.events().isEmpty()) {
-            reasons.add("No service history found — cannot correlate with claimed mechanical failure.");
-            maintenanceSignal = "No service records available.";
-            return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
+            // Absence of history is not a disqualifying signal
+            return false;
         }
 
         LocalDate windowStart = LocalDate.now().minusDays(cleanServiceWindowDays);
         boolean hasRecentCleanService = timeline.events().stream()
                 .filter(e -> parseDateSafe(e.serviceDate()) != null)
                 .filter(e -> !parseDateSafe(e.serviceDate()).isBefore(windowStart))
-                .anyMatch(e -> isCleanService(e));
+                .anyMatch(this::isCleanService);
 
         if (hasRecentCleanService) {
-            reasons.add("Claimed cause is 'mechanical_failure'.");
+            // Only add the "claimed cause" preamble if recall didn't already add it
+            boolean claimedCauseAlreadyAdded = reasons.stream()
+                    .anyMatch(r -> r.startsWith("Claimed cause is"));
+            if (!claimedCauseAlreadyAdded) {
+                reasons.add("Claimed cause is 'mechanical_failure'.");
+            }
             reasons.add("Vehicle has a clean service record within the last "
                     + cleanServiceWindowDays + " days.");
             reasons.add("A recent clean service contradicts an immediate mechanical failure — "
                     + "manual verification required.");
-            maintenanceSignal = "Clean service found within " + cleanServiceWindowDays
-                    + "-day window of incident date.";
-            log.info("FNOL for vehicle {} routed to MANUAL_REVIEW — clean service within {}d",
-                    request.vehicleId(), cleanServiceWindowDays);
-            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+            return true;
         }
-
-        // Mechanical failure claimed but no clean recent service → plausible, STP
-        reasons.add("Claimed cause is 'mechanical_failure'.");
-        reasons.add("No clean service record found within the last " + cleanServiceWindowDays
-                + " days — claim is plausible.");
-        maintenanceSignal = "No clean service within " + cleanServiceWindowDays
-                + "-day window; mechanical failure claim is consistent with maintenance record.";
-        return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
+        return false;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * A service event is "clean" if its notes field contains no defect keywords.
-     * Absence of notes is also treated as clean (no reported issues).
+     * A service event is clean if its notes field contains none of the defect keywords.
+     * Absence of notes (null or blank) is treated as clean — benefit of the doubt to claimant.
+     * "open recall" is NOT a defect keyword here; recall comes from the RecallStatus object.
      */
     private boolean isCleanService(ServiceTimeline.MaintenanceEvent event) {
         if (event.notes() == null || event.notes().isBlank()) {
             return true;
         }
         String lowerNotes = event.notes().toLowerCase();
-        boolean defectFound = DEFECT_KEYWORDS.stream().anyMatch(lowerNotes::contains);
-        return !defectFound;
+        return DEFECT_KEYWORDS.stream().noneMatch(lowerNotes::contains);
     }
 
     private LocalDate parseDateSafe(String dateStr) {

@@ -2,6 +2,7 @@ package com.paymu.claims.controller;
 
 import com.paymu.claims.model.FnolRequest;
 import com.paymu.claims.model.FnolResponse;
+import com.paymu.claims.model.RecallStatus;
 import com.paymu.claims.model.ServiceTimeline;
 import com.paymu.claims.service.ClaimStore;
 import com.paymu.claims.service.MaintenanceClient;
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  *
  * <h3>Endpoints</h3>
  * <ul>
- *   <li>{@code POST /fnol}            — submit a First Notice of Loss</li>
+ *   <li>{@code POST /fnol}             — submit a First Notice of Loss</li>
  *   <li>{@code GET  /claims/{claimId}} — retrieve a previously submitted claim</li>
  * </ul>
  */
@@ -45,17 +46,22 @@ public class ClaimsController {
      *
      * <ol>
      *   <li>Fetches the vehicle's service timeline from maintenance-vehicle-health-ingestion.</li>
-     *   <li>Runs the triage rule against the FNOL and timeline.</li>
+     *   <li>Fetches the vehicle's structured recall status from the same service.</li>
+     *   <li>Runs the triage rule against the FNOL, timeline, and recall status.</li>
      *   <li>Persists and returns the triage result.</li>
      * </ol>
+     *
+     * <p>Both downstream calls degrade independently — a null result from either
+     * means that signal is skipped, not that the claim is blocked.</p>
      */
     @PostMapping("/fnol")
     public ResponseEntity<FnolResponse> submitFnol(@Valid @RequestBody FnolRequest request) {
         log.info("FNOL received for vehicle {} — cause: {}", request.vehicleId(), request.claimedCause());
 
         ServiceTimeline timeline = maintenanceClient.fetchTimeline(request.vehicleId());
+        RecallStatus    recall   = maintenanceClient.fetchRecallStatus(request.vehicleId());
 
-        TriageService.TriageResult triage = triageService.triage(request, timeline);
+        TriageService.TriageResult triage = triageService.triage(request, timeline, recall);
         FnolResponse response = claimStore.save(request, triage);
 
         log.info("FNOL {} → {} for vehicle {}", response.claimId(),
