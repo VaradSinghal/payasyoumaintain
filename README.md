@@ -351,7 +351,8 @@ $env:PYTHONPATH="."; python -m pytest
 docker compose up -d
 ```
 
-> **Note:** The `docker-compose.yml` stub is present with all service definitions. Full environment variable configuration and health-check wiring are in progress.
+> All seven application services start in dependency order via `depends_on: condition: service_healthy`.
+> Build context is the monorepo root — `docker compose build` compiles all Java services inside the container using a two-stage Maven+JRE image.
 
 ---
 
@@ -377,7 +378,8 @@ docker compose up -d
 |---|---|
 | **Phase 1** ✅ | Core ingestion, scoring, and pricing services |
 | **Phase 2** ✅ | `claims-verification` · `notification-advisory` |
-| **Phase 3** 🔲 | Flutter mobile app — policy dashboard, maintenance reminders, score history |
+| **Phase 2.5** ✅ | Docker Compose full-stack orchestration with health checks |
+| **Phase 3** 🔄 | Flutter mobile app — policy dashboard, maintenance reminders, score history |
 | **Phase 4** 🔲 | Real persistence (PostgreSQL/Firestore), real OEM recall API integration, real OCR, FCM/SNS delivery |
 | **Phase 5** 🔲 | Kafka-based event streaming, feature store (Feast), ML model training pipeline |
 
