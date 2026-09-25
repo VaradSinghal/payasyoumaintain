@@ -4,6 +4,7 @@ import java.time.Instant;
 
 public record VehicleRegistration(
         String vehicleId,
+        String policyId,
         String rcNumber,
         String registrationDate,
         OwnerDetails ownerDetails,

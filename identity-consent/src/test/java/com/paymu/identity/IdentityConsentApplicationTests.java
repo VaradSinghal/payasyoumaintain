@@ -88,4 +88,31 @@ class IdentityConsentApplicationTests {
         assertTrue(fetched.usageTrackingOptIn());
         assertFalse(fetched.maintenanceTrackingOptIn());
     }
+
+    @Test
+    @DisplayName("Generated policy_id is stable across repeated fetches")
+    void testStablePolicyId() {
+        OwnerDetails owner = new OwnerDetails(
+                "Stable Owner",
+                "PAN1234567",
+                "PAN",
+                "stable@example.com",
+                "+919876543212"
+        );
+        VehicleRegistrationRequest request = new VehicleRegistrationRequest(
+                "DL-01-XX-9999",
+                LocalDate.now(),
+                owner
+        );
+        VehicleRegistration reg = registrationService.register(request);
+        
+        String generatedPolicyId = reg.policyId();
+        assertNotNull(generatedPolicyId, "policyId should be generated on registration");
+
+        VehicleRegistration fetched1 = registrationService.getRegistration(reg.vehicleId());
+        VehicleRegistration fetched2 = registrationService.getRegistration(reg.vehicleId());
+        
+        assertEquals(generatedPolicyId, fetched1.policyId(), "policyId should be stable across fetches");
+        assertEquals(generatedPolicyId, fetched2.policyId(), "policyId should be stable across fetches");
+    }
 }

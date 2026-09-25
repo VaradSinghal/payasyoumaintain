@@ -24,9 +24,11 @@ public class RegistrationService {
     public VehicleRegistration register(VehicleRegistrationRequest request) {
         String kycStatus = kycService.verify(request.ownerDetails());
         String vehicleId = UUID.randomUUID().toString();
+        String policyId = UUID.randomUUID().toString();
         
         VehicleRegistration registration = new VehicleRegistration(
                 vehicleId,
+                policyId,
                 request.rcNumber(),
                 request.registrationDate().toString(),
                 request.ownerDetails(),
