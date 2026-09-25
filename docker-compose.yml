@@ -218,12 +218,15 @@ services:
     ports:
       - "8087:8087"
     depends_on:
+      telematics-usage-ingestion:
+        condition: service_healthy
       maintenance-vehicle-health-ingestion:
         condition: service_healthy
       risk-scoring-engine:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      TELEMATICS_URL:  http://telematics-usage-ingestion:8082/api/v1
       MAINTENANCE_URL: http://maintenance-vehicle-health-ingestion:8083/api/v1
       SCORING_URL:     http://risk-scoring-engine:8084
     healthcheck:

@@ -1,5 +1,6 @@
 package com.paymu.advisory.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.paymu.advisory.model.AdvisoryMessage;
 import com.paymu.advisory.model.AdvisoryResponse;
 import com.paymu.advisory.model.RecallStatus;
@@ -47,6 +48,7 @@ public class AdvisoryController {
      * Generate and deliver advisories for a vehicle.
      *
      * <ol>
+     *   <li>Fetches trip aggregates from telematics service.</li>
      *   <li>Fetches service timeline and recall status from maintenance service.</li>
      *   <li>Posts those to the risk-scoring-engine to get a composite score.</li>
      *   <li>Generates a prioritised advisory list.</li>
@@ -61,9 +63,10 @@ public class AdvisoryController {
     public ResponseEntity<AdvisoryResponse> getAdvisories(@PathVariable String vehicleId) {
         log.info("Generating advisories for vehicle {}", vehicleId);
 
+        JsonNode tripAggregates  = downstreamDataService.fetchTripAggregates(vehicleId);
         ServiceTimeline timeline = downstreamDataService.fetchTimeline(vehicleId);
         RecallStatus recall      = downstreamDataService.fetchRecallStatus(vehicleId);
-        ScoreResponse score      = downstreamDataService.fetchScore(vehicleId, timeline, recall);
+        ScoreResponse score      = downstreamDataService.fetchScore(vehicleId, tripAggregates, timeline, recall);
 
         List<AdvisoryMessage> advisories = advisoryGeneratorService.generate(recall, timeline, score);
 

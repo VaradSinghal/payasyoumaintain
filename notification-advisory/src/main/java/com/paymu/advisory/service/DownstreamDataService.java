@@ -1,5 +1,6 @@
 package com.paymu.advisory.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paymu.advisory.model.RecallStatus;
 import com.paymu.advisory.model.ScoreResponse;
@@ -11,21 +12,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.util.Map;
-
 /**
- * Fetches data from maintenance-vehicle-health-ingestion and risk-scoring-engine
- * to supply the advisory generator.
+ * Fetches data from telematics-usage-ingestion, maintenance-vehicle-health-ingestion,
+ * and risk-scoring-engine to supply the advisory generator.
  *
  * <p>Call order:</p>
  * <ol>
+ *   <li>GET /aggregates/{vehicleId}      → Trip Aggregates (JsonNode)</li>
  *   <li>GET /timeline/{vehicleId}        → {@link ServiceTimeline}</li>
  *   <li>GET /recall-status/{vehicleId}   → {@link RecallStatus}</li>
- *   <li>POST /score/{vehicleId} with timeline + recall → {@link ScoreResponse}</li>
+ *   <li>POST /score/{vehicleId} with trip_aggregates, timeline + recall → {@link ScoreResponse}</li>
  * </ol>
  *
- * <p>Each call degrades gracefully — a failure returns null, and the advisory
- * generator simply skips the rules that rely on that data.</p>
+ * <p>Each call degrades gracefully — a failure returns null, and the downstream
+ * engine simply cold-starts those inputs as neutral 100 or skips rules.</p>
  */
 @Service
 public class DownstreamDataService {
@@ -34,6 +34,9 @@ public class DownstreamDataService {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+
+    @Value("${services.telematics-url}")
+    private String telematicsUrl;
 
     @Value("${services.maintenance-url}")
     private String maintenanceUrl;
@@ -46,6 +49,10 @@ public class DownstreamDataService {
         this.objectMapper = objectMapper;
     }
 
+    public JsonNode fetchTripAggregates(String vehicleId) {
+        return get(telematicsUrl + "/aggregates/" + vehicleId, JsonNode.class, "trip aggregates");
+    }
+
     public ServiceTimeline fetchTimeline(String vehicleId) {
         return get(maintenanceUrl + "/timeline/" + vehicleId, ServiceTimeline.class, "service timeline");
     }
@@ -55,21 +62,22 @@ public class DownstreamDataService {
     }
 
     /**
-     * Posts the already-fetched timeline and recall data to the scoring engine
+     * Posts the already-fetched telematics, timeline and recall data to the scoring engine
      * to get a risk score. This avoids a second downstream pull inside the scorer.
      */
-    public ScoreResponse fetchScore(String vehicleId, ServiceTimeline timeline, RecallStatus recall) {
+    public ScoreResponse fetchScore(String vehicleId, JsonNode tripAggregates, ServiceTimeline timeline, RecallStatus recall) {
         try {
             // Build a minimal ScoreRequest — only include what we have
             var payload = new java.util.LinkedHashMap<String, Object>();
+            if (tripAggregates != null) {
+                payload.put("trip_aggregates", tripAggregates);
+            }
             if (timeline != null) {
                 payload.put("service_timeline", objectMapper.convertValue(timeline, Object.class));
             }
             if (recall != null) {
                 payload.put("recall_status", objectMapper.convertValue(recall, Object.class));
             }
-            // trip_aggregates omitted — advisory doesn't need to re-fetch telematics;
-            // the score engine cold-starts those inputs as neutral 100.
 
             String body = objectMapper.writeValueAsString(payload);
             String responseBody = restClient.post()
