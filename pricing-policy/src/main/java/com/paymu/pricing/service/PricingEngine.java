@@ -2,6 +2,7 @@ package com.paymu.pricing.service;
 
 import com.paymu.pricing.model.DiscountBreakdown;
 import com.paymu.pricing.model.PremiumResponse;
+import com.paymu.pricing.model.ScoreResponse;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -94,13 +95,10 @@ public class PricingEngine {
      * @param vehicleId   UUID of the vehicle
      * @param requestId   idempotency key (echoed back)
      * @param policyId    policy UUID (echoed back)
-     * @param usageScore       usage score 0–100, or null for cold-start (neutral)
-     * @param maintenanceScore maintenance score 0–100, or null for cold-start (neutral)
-     * @param compositeScore   composite score 0–100, or null for cold-start (neutral)
+     * @param score       the risk score from the scoring engine, or null for cold-start (neutral)
      * @return computed {@link PremiumResponse}
      */
-    public PremiumResponse compute(String vehicleId, String requestId, String policyId,
-                                   Double usageScore, Double maintenanceScore, Double compositeScore) {
+    public PremiumResponse compute(String vehicleId, String requestId, String policyId, ScoreResponse score) {
 
         VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
 
@@ -121,7 +119,7 @@ public class PricingEngine {
         }
 
         // 4. Dynamic risk multiplier from composite score
-        double effectiveComposite = compositeScore != null ? compositeScore : -1.0;
+        double effectiveComposite = (score != null && score.compositeScore() != null) ? score.compositeScore() : -1.0;
         double dynamicMultiplier;
         String scoreAdjReason;
         double scoreAdjPct;
@@ -145,6 +143,17 @@ public class PricingEngine {
         double finalPremium = round2(basePremiumAfterNcb * dynamicMultiplier);
 
         Instant now = Instant.now();
+
+        PremiumResponse.ScoreDetail scoreDetail = null;
+        if (score != null) {
+            scoreDetail = new PremiumResponse.ScoreDetail(
+                    score.usageScore(),
+                    score.maintenanceScore(),
+                    effectiveComposite >= 0 ? effectiveComposite : 0.0,
+                    score.contributingFactors()
+            );
+        }
+
         return new PremiumResponse(
                 requestId,
                 vehicleId,
@@ -155,7 +164,8 @@ public class PricingEngine {
                 "INR",
                 breakdown,
                 now.plus(30, ChronoUnit.DAYS).toString(),
-                now.toString()
+                now.toString(),
+                scoreDetail
         );
     }
 

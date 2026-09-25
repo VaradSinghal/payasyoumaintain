@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.0.0",
+  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.0.1",
   "title": "Premium Response",
   "description": "Response payload from the pricing-policy service containing the computed premium breakdown.",
   "type": "object",
@@ -78,6 +78,29 @@
       "type": "string",
       "format": "date-time",
       "description": "ISO-8601 timestamp of when this premium was computed."
+    },
+    "score_detail": {
+      "type": "object",
+      "description": "Risk scoring details that informed the premium calculation.",
+      "required": ["usage_score", "maintenance_score", "composite_score"],
+      "properties": {
+        "usage_score": { "type": "number", "description": "0-100 usage score." },
+        "maintenance_score": { "type": "number", "description": "0-100 maintenance score." },
+        "composite_score": { "type": "number", "description": "0-100 overall composite score." },
+        "contributing_factors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["factor_name", "impact", "direction", "description"],
+            "properties": {
+              "factor_name": { "type": "string" },
+              "impact": { "type": "number" },
+              "direction": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false

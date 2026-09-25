@@ -2,6 +2,7 @@ package com.paymu.pricing.service;
 
 import com.paymu.pricing.model.DiscountBreakdown;
 import com.paymu.pricing.model.PremiumResponse;
+import com.paymu.pricing.model.ScoreResponse;
 import org.junit.jupiter.api.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,7 +30,7 @@ class PricingEngineTest {
     @Test
     @DisplayName("Cold-start (no score) → neutral multiplier 1.0, no error")
     void coldStart_noScore_neutralMultiplier() {
-        PremiumResponse resp = engine.compute(UNKNOWN_VEHICLE, rid(), pid(), null, null, null);
+        PremiumResponse resp = engine.compute(UNKNOWN_VEHICLE, rid(), pid(), null);
 
         assertEquals(1.0, resp.dynamicMultiplier(), 0.001,
                 "Cold-start must use neutral multiplier 1.0");
@@ -46,7 +47,7 @@ class PricingEngineTest {
         // Unknown vehicle → DEFAULT_PROFILE: ₹7.5L, 3yr old, 0% NCB
         // IDV = 750000 × 0.70 = 525000, basePremium = 525000 × 0.026 = 13650
         // No NCB, multiplier = 1.0 → finalPremium = 13650.00
-        PremiumResponse resp = engine.compute(UNKNOWN_VEHICLE, rid(), pid(), null, null, null);
+        PremiumResponse resp = engine.compute(UNKNOWN_VEHICLE, rid(), pid(), null);
         assertEquals(13650.00, resp.finalPremium(), 1.0,
                 "Default profile cold-start premium should be ~₹13,650");
     }
@@ -56,7 +57,7 @@ class PricingEngineTest {
     @Test
     @DisplayName("Composite score 100 → multiplier 0.70 (maximum discount)")
     void perfectScore_multiplierAtBest() {
-        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), 100.0, 100.0, 100.0);
+        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), score(100.0, 100.0, 100.0));
 
         assertEquals(0.700, resp.dynamicMultiplier(), 0.001,
                 "Score 100 must map to multiplier 0.70");
@@ -65,7 +66,7 @@ class PricingEngineTest {
     @Test
     @DisplayName("Composite score 0 → multiplier 1.50 (maximum surcharge)")
     void worstScore_multiplierAtWorst() {
-        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), 0.0, 0.0, 0.0);
+        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), score(0.0, 0.0, 0.0));
 
         assertEquals(1.500, resp.dynamicMultiplier(), 0.001,
                 "Score 0 must map to multiplier 1.50");
@@ -75,7 +76,7 @@ class PricingEngineTest {
     @DisplayName("Composite score 50 → multiplier ~1.10 (midpoint)")
     void midpointScore_interpolatedMultiplier() {
         // At score 50: 1.50 + (0.70 - 1.50) × (50/100) = 1.50 - 0.40 = 1.10
-        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), 50.0, 50.0, 50.0);
+        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), score(50.0, 50.0, 50.0));
 
         assertEquals(1.10, resp.dynamicMultiplier(), 0.001,
                 "Score 50 must interpolate to multiplier ~1.10");
@@ -89,16 +90,12 @@ class PricingEngineTest {
         // Perfect maintenance (score 100) vs. worst maintenance (score 0), usage held constant
         PremiumResponse good = engine.compute(
                 RECALL_VEHICLE, rid(), pid(),
-                80.0,   // usage score
-                100.0,  // maintenance score — perfect
-                (80.0 * 0.6) + (100.0 * 0.4)  // composite = 88.0
+                score(80.0, 100.0, (80.0 * 0.6) + (100.0 * 0.4))
         );
 
         PremiumResponse bad = engine.compute(
                 RECALL_VEHICLE, rid(), pid(),
-                80.0,   // usage score — same
-                30.0,   // maintenance score — poor
-                (80.0 * 0.6) + (30.0 * 0.4)   // composite = 60.0
+                score(80.0, 30.0, (80.0 * 0.6) + (30.0 * 0.4))
         );
 
         assertTrue(bad.finalPremium() > good.finalPremium(),
@@ -115,8 +112,8 @@ class PricingEngineTest {
     void ncb_reducesBasePremium() {
         // PERFECT_MAINTAINER has 20% NCB; RECALL_VEHICLE has 0% NCB.
         // Both at neutral composite 50 to isolate the NCB effect.
-        PremiumResponse withNcb    = engine.compute(PERFECT_MAINTAINER, rid(), pid(), 50.0, 50.0, 50.0);
-        PremiumResponse withoutNcb = engine.compute(RECALL_VEHICLE,     rid(), pid(), 50.0, 50.0, 50.0);
+        PremiumResponse withNcb    = engine.compute(PERFECT_MAINTAINER, rid(), pid(), score(50.0, 50.0, 50.0));
+        PremiumResponse withoutNcb = engine.compute(RECALL_VEHICLE,     rid(), pid(), score(50.0, 50.0, 50.0));
 
         // Must be cheaper even though PERFECT_MAINTAINER has a higher IDV
         boolean ncbBreakdownPresent = withNcb.discountBreakdown().stream()
@@ -129,7 +126,7 @@ class PricingEngineTest {
     @Test
     @DisplayName("Response fields are fully populated per premium-response.schema.json")
     void responseShape_allRequiredFieldsPopulated() {
-        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), 80.0, 90.0, 86.0);
+        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), score(80.0, 90.0, 86.0));
 
         assertNotNull(resp.requestId());
         assertNotNull(resp.vehicleId());
@@ -142,10 +139,22 @@ class PricingEngineTest {
         assertNotNull(resp.validUntil());
         assertFalse(resp.discountBreakdown().isEmpty(),
                 "discount_breakdown must contain at least one entry");
+        assertNotNull(resp.scoreDetail());
+        assertEquals(80.0, resp.scoreDetail().usageScore());
+        assertEquals(90.0, resp.scoreDetail().maintenanceScore());
+        assertEquals(86.0, resp.scoreDetail().compositeScore());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static String rid() { return java.util.UUID.randomUUID().toString(); }
     private static String pid() { return java.util.UUID.randomUUID().toString(); }
+
+    private ScoreResponse score(Double usage, Double maintenance, Double composite) {
+        return new ScoreResponse("s-123", "v-123",
+                usage != null ? usage : 0.0,
+                maintenance != null ? maintenance : 0.0,
+                composite,
+                "2026-09-25T10:00:00Z", "v1", java.util.List.of());
+    }
 }

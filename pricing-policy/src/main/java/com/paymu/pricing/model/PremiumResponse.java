@@ -16,5 +16,13 @@ public record PremiumResponse(
         String currency,
         @JsonProperty("discount_breakdown") List<DiscountBreakdown> discountBreakdown,
         @JsonProperty("valid_until") String validUntil,
-        @JsonProperty("computed_at") String computedAt
-) {}
+        @JsonProperty("computed_at") String computedAt,
+        @JsonProperty("score_detail") ScoreDetail scoreDetail
+) {
+    public record ScoreDetail(
+            @JsonProperty("usage_score") double usageScore,
+            @JsonProperty("maintenance_score") double maintenanceScore,
+            @JsonProperty("composite_score") double compositeScore,
+            @JsonProperty("contributing_factors") List<ScoreResponse.ContributingFactor> contributingFactors
+    ) {}
+}

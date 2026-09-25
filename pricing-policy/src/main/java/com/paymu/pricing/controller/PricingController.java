@@ -56,17 +56,11 @@ public class PricingController {
 
         ScoreResponse score = orchestrator.fetchScore(vehicleId);
 
-        Double usageScore       = score != null ? score.usageScore()       : null;
-        Double maintenanceScore = score != null ? score.maintenanceScore()  : null;
-        Double compositeScore   = score != null ? score.compositeScore()    : null;
-
         if (score == null) {
             log.info("No score available for vehicle {} — applying cold-start neutral pricing", vehicleId);
         }
 
-        PremiumResponse response = pricingEngine.compute(
-                vehicleId, requestId, policyId,
-                usageScore, maintenanceScore, compositeScore);
+        PremiumResponse response = pricingEngine.compute(vehicleId, requestId, policyId, score);
 
         return ResponseEntity.ok(response);
     }
