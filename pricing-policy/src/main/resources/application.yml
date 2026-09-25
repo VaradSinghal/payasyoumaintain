@@ -13,6 +13,7 @@ spring:
 
 # Downstream service URLs — override via environment variables in docker-compose
 services:
+  identity-url: ${IDENTITY_URL:http://localhost:8081/api/v1}
   telematics-url: ${TELEMATICS_URL:http://localhost:8082/api/v1}
   maintenance-url: ${MAINTENANCE_URL:http://localhost:8083/api/v1}
   scoring-url: ${SCORING_URL:http://localhost:8084}

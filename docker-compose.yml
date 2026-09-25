@@ -174,6 +174,8 @@ services:
     ports:
       - "8085:8085"
     depends_on:
+      identity-consent:
+        condition: service_healthy
       telematics-usage-ingestion:
         condition: service_healthy
       maintenance-vehicle-health-ingestion:
@@ -182,6 +184,7 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      IDENTITY_URL:     http://identity-consent:8081/api/v1
       TELEMATICS_URL:   http://telematics-usage-ingestion:8082/api/v1
       MAINTENANCE_URL:  http://maintenance-vehicle-health-ingestion:8083/api/v1
       SCORING_URL:      http://risk-scoring-engine:8084

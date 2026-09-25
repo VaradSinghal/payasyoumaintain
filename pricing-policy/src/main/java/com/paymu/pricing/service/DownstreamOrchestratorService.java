@@ -35,6 +35,9 @@ public class DownstreamOrchestratorService {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
+    @Value("${services.identity-url}")
+    private String identityUrl;
+
     @Value("${services.telematics-url}")
     private String telematicsUrl;
 
@@ -78,6 +81,18 @@ public class DownstreamOrchestratorService {
             log.warn("Failed to parse score response for vehicle {}: {}", vehicleId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Fetches the policy ID from identity-consent for the given vehicle.
+     * Returns null if unavailable or missing.
+     */
+    public String fetchPolicyId(String vehicleId) {
+        JsonNode node = fetchJson(identityUrl + "/vehicles/" + vehicleId, "vehicle registration");
+        if (node != null && node.has("policyId")) {
+            return node.get("policyId").asText();
+        }
+        return null;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

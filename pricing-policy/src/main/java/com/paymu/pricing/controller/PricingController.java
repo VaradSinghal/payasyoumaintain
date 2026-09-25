@@ -48,9 +48,19 @@ public class PricingController {
      * In Phase 4 these will be persisted and linked to the vehicle registration.</p>
      */
     @PostMapping("/quote/{vehicleId}")
-    public ResponseEntity<PremiumResponse> computeQuote(@PathVariable String vehicleId) {
+    public ResponseEntity<PremiumResponse> computeQuote(
+            @PathVariable String vehicleId,
+            @RequestParam(required = false, name = "policy_id") String policyId) {
+        
         String requestId = UUID.randomUUID().toString();
-        String policyId  = UUID.randomUUID().toString();
+        
+        if (policyId == null) {
+            policyId = orchestrator.fetchPolicyId(vehicleId);
+        }
+        if (policyId == null) {
+            policyId = UUID.randomUUID().toString(); // Fallback if identity-consent is missing or fails
+            log.info("No policy_id provided or found for vehicle {}, generated new one: {}", vehicleId, policyId);
+        }
 
         log.info("Computing quote for vehicle {} (requestId={})", vehicleId, requestId);
 
