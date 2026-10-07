@@ -23,7 +23,7 @@ except Exception as e:
     SCORE_SCHEMA = None
     print(f"Warning: Could not load score schema from {SCHEMA_PATH}: {e}")
 
-@app.post("/score/{vehicle_id}", response_model=ScoreResponse)
+@app.post("/score/{vehicle_id}", response_model=ScoreResponse, response_model_exclude_unset=True)
 def score_vehicle(vehicle_id: str, request: ScoreRequest):
     """
     Computes the risk score for a vehicle based on its maintenance and usage history.

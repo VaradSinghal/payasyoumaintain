@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, ConfigDict
 from datetime import date
 
@@ -36,11 +36,15 @@ class RecallDetail(BaseModel):
 
 class RecallStatus(BaseModel):
     vehicle_id: str
-    has_open_recall: bool
-    recall_count: int
+    # "unavailable" = the recall source was queried but failed/timed out. This is
+    # distinct from omitting recall_status altogether. When unavailable, the
+    # recall component is excluded from scoring (never defaulted to a 0 penalty).
+    availability: Literal["available", "unavailable"] = "available"
+    has_open_recall: bool = False
+    recall_count: int = 0
     recall_details: List[RecallDetail] = []
-    source: str
-    checked_at: str
+    source: str = ""
+    checked_at: str = ""
 
 # --- Telematics Models ---
 
@@ -62,6 +66,7 @@ class ScoreRequest(BaseModel):
     service_timeline: Optional[ServiceTimeline] = None
     trip_aggregates: List[TripAggregate] = []
     recall_status: Optional[RecallStatus] = None  # Structured recall input per recall-status.schema.json
+    vehicle_age_months: Optional[int] = None      # Optional; used by the safety-critical gap rule
 
 class ContributingFactor(BaseModel):
     factor_name: str
@@ -79,3 +84,9 @@ class ScoreResponse(BaseModel):
     computed_at: str
     model_version: str
     contributing_factors: List[ContributingFactor]
+    health_status: Optional[Literal["scored", "insufficient_data"]] = None
+    vehicle_health_score: Optional[float] = None
+    health_confidence: Optional[Literal["verified", "unverified_self_reported"]] = None
+    renewal_recommendation: Optional[str] = None
+    has_open_recall: Optional[bool] = None
+    data_flags: List[str] = []

@@ -142,7 +142,7 @@ def test_borderline_profile():
 
     score = generate_score(vid, request)
 
-    assert 90.0 < score["maintenance_score"] < 100.0
+    assert score["maintenance_score"] == 90.0   # 400 days -> 366-545 band -> 10 penalty
     assert 80.0 < score["usage_score"] < 90.0
 
     factors = [f["factor_name"] for f in score["contributing_factors"]]
@@ -249,4 +249,161 @@ def test_cold_start_with_recall():
     
     factors = [f["factor_name"] for f in score["contributing_factors"]]
     assert "open_recall" in factors
+
+
+# ══ Vehicle Health Scoring Specification — scenarios ═════════════════════════
+
+def ev(eid: str, days_ago: int, service_type: str, odometer: int, source: str,
+       vid: str = "v-spec") -> MaintenanceEvent:
+    return MaintenanceEvent(
+        event_id=eid, vehicle_id=vid,
+        service_date=date.today() - timedelta(days=days_ago),
+        service_type=service_type, odometer_km=odometer, source=source,
+    )
+
+def tl(events: list[MaintenanceEvent], vid: str = "v-spec") -> ServiceTimeline:
+    return ServiceTimeline(vehicle_id=vid, total_services=len(events), events=events)
+
+def unavailable_recall(vid: str = "v-spec") -> RecallStatus:
+    return RecallStatus(vehicle_id=vid, availability="unavailable")
+
+
+def test_spec_6_1_normal():
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 200, "oil_change", 30000, "oem_api"),
+            ev("e2", 300, "brake_service", 25000, "oem_api"),   # ~10 months ago
+        ]),
+        recall_status=make_recall_status("v-spec", has_open=False),
+    )
+    s = generate_score("v-spec", req)
+    assert s["health_status"] == "scored"
+    assert s["vehicle_health_score"] == 100.0
+    assert s["maintenance_score"] == 100.0
+    assert s["health_confidence"] == "verified"
+    assert s["has_open_recall"] is False
+    assert s["data_flags"] == []
+    assert s["renewal_recommendation"] == "Eligible for standard renewal - vehicle health profile is strong."
+
+
+def test_spec_6_2_poor_maintenance():
+    req = ScoreRequest(
+        vehicle_age_months=60,
+        service_timeline=tl([ev("e1", 800, "oil_change", 50000, "oem_api")]),
+        recall_status=make_recall_status("v-spec", has_open=True, recalls=[
+            RecallDetail(recall_id="RC-1", description="x", issued_date="2026-01-01")]),
+    )
+    s = generate_score("v-spec", req)
+    assert s["vehicle_health_score"] == 15.0   # 100 - 40 - 30 - 15
+    assert s["health_confidence"] == "verified"   # low score is earned, not a confidence artifact
+    assert s["has_open_recall"] is True
+    rec = s["renewal_recommendation"]
+    assert rec.startswith("Open recall on file \u2014 schedule service immediately.")
+    assert "We recommend a full service and a brake inspection before renewal." in rec
+    factors = [f["factor_name"] for f in s["contributing_factors"]]
+    assert {"overdue_service", "open_recall", "brake_service_gap"} <= set(factors)
+
+
+def test_spec_6_3_conflicting_data():
+    req = ScoreRequest(
+        vehicle_age_months=60,
+        service_timeline=tl([
+            ev("A", 100, "full_service", 42000, "oem_api"),
+            ev("B", 95, "full_service", 38500, "self_upload"),   # 3,500 km *backwards* in 5 days
+        ]),
+        recall_status=make_recall_status("v-spec", has_open=False),
+    )
+    s = generate_score("v-spec", req)
+    assert s["vehicle_health_score"] == 100.0
+    assert "conflicting_records_detected" in s["data_flags"]
+    # The self_upload record was dropped, so only oem_api contributes -> verified.
+    assert s["health_confidence"] == "verified"
+
+
+def test_spec_6_4a_incomplete_zero_events():
+    req = ScoreRequest(
+        vehicle_age_months=12,
+        service_timeline=tl([]),
+        recall_status=make_recall_status("v-spec", has_open=False),
+    )
+    s = generate_score("v-spec", req)
+    assert s["health_status"] == "insufficient_data"
+    assert s["vehicle_health_score"] is None
+    assert "health_confidence" not in s
+    assert s["renewal_recommendation"].startswith("Schedule a baseline inspection")
+
+
+def test_spec_6_4b_incomplete_self_upload_recall_unavailable():
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([ev("e1", 60, "tyre_rotation", 20000, "self_upload")]),
+        recall_status=unavailable_recall(),
+    )
+    s = generate_score("v-spec", req)
+    assert s["vehicle_health_score"] == 85.0   # 0 + recall excluded + 15 gap
+    assert s["health_confidence"] == "unverified_self_reported"
+    assert "recall_status_unavailable" in s["data_flags"]
+    assert s["has_open_recall"] is False
+    assert "self-reported" in s["renewal_recommendation"]
+
+
+# ── Rule-level tests ──
+
+def _score_days(days: int) -> float:
+    req = ScoreRequest(
+        vehicle_age_months=12,
+        service_timeline=tl([ev("e1", days, "full_service", 1000, "oem_api")]),
+    )
+    return generate_score("v-spec", req)["vehicle_health_score"]
+
+def test_recency_bands_exact():
+    assert _score_days(365) == 100.0
+    assert _score_days(366) == 90.0
+    assert _score_days(545) == 90.0
+    assert _score_days(546) == 75.0
+    assert _score_days(730) == 75.0
+    assert _score_days(731) == 60.0
+
+def test_brake_gap_skipped_for_young_vehicle_and_applied_for_old():
+    base = [ev("e1", 30, "oil_change", 1000, "oem_api")]
+    young = generate_score("v", ScoreRequest(vehicle_age_months=23, service_timeline=tl(base)))
+    old = generate_score("v", ScoreRequest(vehicle_age_months=24, service_timeline=tl(base)))
+    assert young["vehicle_health_score"] == 100.0
+    assert old["vehicle_health_score"] == 85.0
+
+def test_self_upload_only_is_capped_at_85():
+    req = ScoreRequest(
+        vehicle_age_months=12,
+        service_timeline=tl([ev("e1", 10, "brake_service", 1000, "self_upload")]),
+    )
+    s = generate_score("v", req)
+    assert s["vehicle_health_score"] == 85.0
+    assert s["health_confidence"] == "unverified_self_reported"
+
+def test_recall_unavailable_is_not_defaulted_to_zero_penalty_flag_only():
+    # Omitted recall_status: no flag. Explicit unavailable: flagged, still no penalty.
+    omitted = generate_score("v", ScoreRequest(
+        vehicle_age_months=12,
+        service_timeline=tl([ev("e1", 10, "full_service", 1000, "oem_api")])))
+    unavail = generate_score("v", ScoreRequest(
+        vehicle_age_months=12, recall_status=unavailable_recall("v"),
+        service_timeline=tl([ev("e1", 10, "full_service", 1000, "oem_api")])))
+    assert "recall_status_unavailable" not in omitted["data_flags"]
+    assert "recall_status_unavailable" in unavail["data_flags"]
+
+def test_open_recall_line_prepended_regardless_of_band():
+    req = ScoreRequest(
+        vehicle_age_months=12,
+        service_timeline=tl([ev("e1", 10, "full_service", 1000, "oem_api")]),
+        recall_status=make_recall_status("v", has_open=True),
+    )
+    s = generate_score("v", req)
+    assert s["vehicle_health_score"] == 70.0
+    assert s["renewal_recommendation"].startswith("Open recall on file \u2014 schedule service immediately.")
+
+def test_cold_start_unchanged_neutral_maintenance_score():
+    s = generate_score("v", ScoreRequest())
+    assert s["maintenance_score"] == 100.0
+    assert s["composite_score"] == 100.0
 
