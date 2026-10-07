@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/score/v1.0.0",
+  "$id": "https://payasyoumaintain.com/schemas/score/v1.0.1",
   "title": "Risk Score",
   "description": "Output of the risk-scoring-engine. Contains usage and maintenance scores for a vehicle, along with contributing factors for explainability and regulatory transparency.",
   "type": "object",
@@ -49,6 +49,35 @@
     "model_version": {
       "type": "string",
       "description": "Version identifier of the ML model that produced this score (e.g. 'v2.3.1')."
+    },
+    "health_status": {
+      "type": "string",
+      "enum": ["scored", "insufficient_data"],
+      "description": "Whether a vehicle health score could be computed. 'insufficient_data' when no service events are on file."
+    },
+    "vehicle_health_score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Deterministic vehicle health score (0-100). Null when health_status is 'insufficient_data'."
+    },
+    "health_confidence": {
+      "type": "string",
+      "enum": ["verified", "unverified_self_reported"],
+      "description": "'unverified_self_reported' when every contributing service record is self_upload (score capped); otherwise 'verified'."
+    },
+    "renewal_recommendation": {
+      "type": "string",
+      "description": "Advisory renewal recommendation text. Never phrased as a denial."
+    },
+    "has_open_recall": {
+      "type": "boolean",
+      "description": "Open-recall flag from the structured recall-status source, surfaced independently of the score."
+    },
+    "data_flags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Data-quality flags, e.g. 'conflicting_records_detected', 'recall_status_unavailable'."
     },
     "contributing_factors": {
       "type": "array",

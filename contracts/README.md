@@ -16,7 +16,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`usage-event.schema.json`](schemas/usage-event.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
 | [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
-| [`score.schema.json`](schemas/score.schema.json) | v1.0.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
+| [`score.schema.json`](schemas/score.schema.json) | v1.0.1 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
 | [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.0.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 
@@ -46,6 +46,7 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | Date | Schema | From | To | Type | Summary |
 |---|---|---|---|---|---|
 | 2026-09-22 | `recall-status.schema.json` | — | v1.0.0 | **New** | Introduced structured recall status schema. Replaces ad-hoc `OPEN RECALL` text parsing in `maintenance-event.notes`. Patch-equivalent additive addition. |
+| 2026-10-07 | `score.schema.json` | v1.0.0 | v1.0.1 | **Patch** | Added optional `health_status`, `vehicle_health_score` (nullable), `health_confidence`, `renewal_recommendation`, `has_open_recall`, `data_flags` for the Phase A vehicle-health score. |
 
 ## Validation Integration
 
