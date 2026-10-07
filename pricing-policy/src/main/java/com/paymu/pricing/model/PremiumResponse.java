@@ -17,12 +17,19 @@ public record PremiumResponse(
         @JsonProperty("discount_breakdown") List<DiscountBreakdown> discountBreakdown,
         @JsonProperty("valid_until") String validUntil,
         @JsonProperty("computed_at") String computedAt,
+        @JsonProperty("methodology_note") String methodologyNote,
         @JsonProperty("score_detail") ScoreDetail scoreDetail
 ) {
     public record ScoreDetail(
             @JsonProperty("usage_score") double usageScore,
-            @JsonProperty("maintenance_score") double maintenanceScore,
-            @JsonProperty("composite_score") double compositeScore,
+            @JsonProperty("maintenance_score") Double maintenanceScore,
+            @JsonProperty("composite_score") Double compositeScore,
+            @JsonProperty("health_status") String healthStatus,
+            @JsonProperty("vehicle_health_score") Double vehicleHealthScore,
+            @JsonProperty("health_confidence") String healthConfidence,
+            @JsonProperty("renewal_recommendation") String renewalRecommendation,
+            @JsonProperty("has_open_recall") Boolean hasOpenRecall,
+            @JsonProperty("data_flags") List<String> dataFlags,
             @JsonProperty("contributing_factors") List<ScoreResponse.ContributingFactor> contributingFactors
     ) {}
 }

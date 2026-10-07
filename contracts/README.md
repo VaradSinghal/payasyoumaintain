@@ -16,7 +16,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`usage-event.schema.json`](schemas/usage-event.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
 | [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
-| [`score.schema.json`](schemas/score.schema.json) | v1.0.1 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
+| [`score.schema.json`](schemas/score.schema.json) | v1.1.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
 | [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.0.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 
@@ -47,6 +47,14 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 |---|---|---|---|---|---|
 | 2026-09-22 | `recall-status.schema.json` | — | v1.0.0 | **New** | Introduced structured recall status schema. Replaces ad-hoc `OPEN RECALL` text parsing in `maintenance-event.notes`. Patch-equivalent additive addition. |
 | 2026-10-07 | `score.schema.json` | v1.0.0 | v1.0.1 | **Patch** | Added optional `health_status`, `vehicle_health_score` (nullable), `health_confidence`, `renewal_recommendation`, `has_open_recall`, `data_flags` for the Phase A vehicle-health score. |
+| 2026-10-08 | `score.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening, consumer-breaking) | `maintenance_score` (required), `composite_score` and `has_open_recall` widened from non-null to nullable. Previously these fields could only express a concrete value, so a `false` / `100` could actually mean "unknown" (recall source unavailable, or no service events on file). `null` now means unknown and must never be collapsed to `false` or a neutral number. Versioned as Minor per project decision; note the Versioning Policy table would classify a type change as Major, so consumers must still handle `null` before the producer emits it (see rollout rule 5). |
+
+### Null semantics in `score.schema.json` (v1.1.0)
+
+- `has_open_recall`: `true` / `false` when known; `null` = unknown/unavailable (e.g. recall source timed out). Never collapse `null` to `false`.
+- `maintenance_score`: `null` when `health_status` is `insufficient_data`.
+- `composite_score`: **MUST be `null` whenever `maintenance_score` is `null`.** Producers and consumers must never silently fall back to a usage-only blend.
+- Consumers (pricing-policy, notification-advisory, mobile-app) must handle `null` for all three fields before the producer starts emitting them.
 
 ## Validation Integration
 

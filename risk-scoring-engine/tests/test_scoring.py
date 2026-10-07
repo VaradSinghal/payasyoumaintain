@@ -215,16 +215,18 @@ def test_recall_from_field_not_notes():
 def test_cold_start_profile():
     """
     Brand new policyholder: no service timeline, no trips, no recall status.
-    Must return neutral 100 for both scores and a neutral 'insufficient_data' factor.
+    Must return null maintenance/composite scores (nothing to score), a neutral
+    usage score, and a neutral 'insufficient_data' factor.
     """
     vid = "v-new"
 
     request = ScoreRequest()
     score = generate_score(vid, request)
 
-    assert score["maintenance_score"] == 100.0
+    assert score["health_status"] == "insufficient_data"
+    assert score["maintenance_score"] is None
     assert score["usage_score"] == 100.0
-    assert score["composite_score"] == 100.0
+    assert score["composite_score"] is None
 
     factors = [f["factor_name"] for f in score["contributing_factors"]]
     assert "insufficient_data" in factors
@@ -232,8 +234,9 @@ def test_cold_start_profile():
 
 def test_cold_start_with_recall():
     """
-    Brand new policyholder with NO service timeline, but OEM DB indicates
-    an open recall. The penalty must still apply despite timeline being missing.
+    Brand new policyholder with NO service timeline, but OEM DB indicates an
+    open recall. The maintenance component is not scored (null), but the recall
+    is still surfaced independently.
     """
     vid = "v-new-recall"
     
@@ -244,7 +247,9 @@ def test_cold_start_with_recall():
     )
     score = generate_score(vid, request)
     
-    assert score["maintenance_score"] < 100.0
+    assert score["maintenance_score"] is None
+    assert score["composite_score"] is None
+    assert score["has_open_recall"] is True
     assert score["usage_score"] == 100.0
     
     factors = [f["factor_name"] for f in score["contributing_factors"]]
@@ -330,6 +335,9 @@ def test_spec_6_4a_incomplete_zero_events():
     s = generate_score("v-spec", req)
     assert s["health_status"] == "insufficient_data"
     assert s["vehicle_health_score"] is None
+    assert s["maintenance_score"] is None
+    assert s["composite_score"] is None
+    assert s["has_open_recall"] is False   # recall source was available and confirmed none
     assert "health_confidence" not in s
     assert s["renewal_recommendation"].startswith("Schedule a baseline inspection")
 
@@ -344,7 +352,9 @@ def test_spec_6_4b_incomplete_self_upload_recall_unavailable():
     assert s["vehicle_health_score"] == 85.0   # 0 + recall excluded + 15 gap
     assert s["health_confidence"] == "unverified_self_reported"
     assert "recall_status_unavailable" in s["data_flags"]
-    assert s["has_open_recall"] is False
+    assert s["has_open_recall"] is None   # unknown, not collapsed to False
+    assert s["maintenance_score"] == 85.0
+    assert s["composite_score"] is not None   # maintenance is scored here, so composite exists
     assert "self-reported" in s["renewal_recommendation"]
 
 
@@ -402,8 +412,25 @@ def test_open_recall_line_prepended_regardless_of_band():
     assert s["vehicle_health_score"] == 70.0
     assert s["renewal_recommendation"].startswith("Open recall on file \u2014 schedule service immediately.")
 
-def test_cold_start_unchanged_neutral_maintenance_score():
-    s = generate_score("v", ScoreRequest())
-    assert s["maintenance_score"] == 100.0
-    assert s["composite_score"] == 100.0
+def test_has_open_recall_is_null_not_false_when_unavailable():
+    for timeline in (None, tl([ev("e1", 10, "full_service", 1000, "oem_api")])):
+        s = generate_score("v", ScoreRequest(
+            vehicle_age_months=12, service_timeline=timeline,
+            recall_status=unavailable_recall("v")))
+        assert s["has_open_recall"] is None
+        assert "recall_status_unavailable" in s["data_flags"]
+    # Confirmed 'no recall' remains a distinct, concrete False.
+    confirmed = generate_score("v", ScoreRequest(
+        recall_status=make_recall_status("v", has_open=False)))
+    assert confirmed["has_open_recall"] is False
+
+def test_composite_is_null_when_maintenance_score_is_null():
+    # Usage data is present and good, but must NOT be blended into a usage-only composite.
+    s = generate_score("v", ScoreRequest(
+        service_timeline=tl([]),
+        trip_aggregates=make_trips("v", n=5, harsh_braking=0, hard_accel=0)))
+    assert s["usage_score"] == 100.0
+    assert s["maintenance_score"] is None
+    assert s["composite_score"] is None
+
 

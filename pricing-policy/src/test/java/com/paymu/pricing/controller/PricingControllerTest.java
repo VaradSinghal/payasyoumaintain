@@ -40,8 +40,8 @@ class PricingControllerTest {
         // Mock the orchestrator to return a stable policy ID from identity-consent
         when(orchestrator.fetchPolicyId(vehicleId)).thenReturn(stablePolicyId);
         // Mock the score so it doesn't fail
-        when(orchestrator.fetchScore(vehicleId)).thenReturn(
-                new ScoreResponse("s-1", vehicleId, 100.0, 100.0, 100.0, "now", "v1", List.of())
+        when(orchestrator.fetchScore(org.mockito.ArgumentMatchers.eq(vehicleId), org.mockito.ArgumentMatchers.anyInt())).thenReturn(
+                new ScoreResponse("s-1", vehicleId, 100.0, 100.0, 100.0, "now", "v1", "scored", 100.0, "verified", "renew", false, List.of(), List.of())
         );
 
         // First call

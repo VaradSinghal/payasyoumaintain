@@ -89,6 +89,11 @@ public class PricingEngine {
 
     // -------------------------------------------------------------------------
 
+    public int getVehicleAgeMonths(String vehicleId) {
+        VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
+        return profile.vehicleAgeYears() * 12;
+    }
+
     /**
      * Computes the premium for a vehicle given its latest risk score.
      *
@@ -149,10 +154,18 @@ public class PricingEngine {
             scoreDetail = new PremiumResponse.ScoreDetail(
                     score.usageScore(),
                     score.maintenanceScore(),
-                    effectiveComposite >= 0 ? effectiveComposite : 0.0,
+                    effectiveComposite >= 0 ? effectiveComposite : null,
+                    score.healthStatus(),
+                    score.vehicleHealthScore(),
+                    score.healthConfidence(),
+                    score.renewalRecommendation(),
+                    score.hasOpenRecall(),
+                    score.dataFlags(),
                     score.contributingFactors()
             );
         }
+
+        String methodologyNote = "Dynamic Risk Multiplier is illustrative, pending actuarial validation on real claims data (Phase A).";
 
         return new PremiumResponse(
                 requestId,
@@ -165,6 +178,7 @@ public class PricingEngine {
                 breakdown,
                 now.plus(30, ChronoUnit.DAYS).toString(),
                 now.toString(),
+                methodologyNote,
                 scoreDetail
         );
     }

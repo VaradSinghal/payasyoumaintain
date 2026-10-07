@@ -79,8 +79,8 @@ class ScoreResponse(BaseModel):
     score_id: str
     vehicle_id: str
     usage_score: float
-    maintenance_score: float
-    composite_score: float
+    maintenance_score: Optional[float]
+    composite_score: Optional[float]
     computed_at: str
     model_version: str
     contributing_factors: List[ContributingFactor]

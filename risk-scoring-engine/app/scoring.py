@@ -33,11 +33,12 @@ class HealthResult:
     confidence: Optional[str]        # None when insufficient_data
     factors: List[ContributingFactor] = field(default_factory=list)
     flags: List[str] = field(default_factory=list)
-    has_open_recall: bool = False
+    # None = unknown (recall source unavailable); never collapsed to False.
+    has_open_recall: Optional[bool] = False
     overdue: bool = False
     needs_brake: bool = False
-    # Numeric maintenance component fed to the composite.
-    maintenance_score: float = 100.0
+    # Maintenance component fed to the composite. None when insufficient_data.
+    maintenance_score: Optional[float] = None
 
 
 def _recency_penalty(days: int) -> float:
@@ -83,12 +84,14 @@ def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
     # Recall handling. Notes text is NEVER read — recall_status is the sole source.
     rs = request.recall_status
     recall_unavailable = rs is not None and rs.availability == "unavailable"
-    has_open_recall = bool(rs is not None and not recall_unavailable and rs.has_open_recall)
+    recall_confirmed_open = bool(rs is not None and not recall_unavailable and rs.has_open_recall)
+    # Unavailable -> null (unknown), distinct from a confirmed False.
+    has_open_recall = None if recall_unavailable else recall_confirmed_open
     if recall_unavailable:
         flags.append("recall_status_unavailable")
 
     recall_penalty = 0.0
-    if has_open_recall:
+    if recall_confirmed_open:
         recall_penalty = RECALL_PENALTY
         factors.append(ContributingFactor(
             factor_name="open_recall",
@@ -99,21 +102,14 @@ def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
 
     timeline = request.service_timeline
 
-    # Cold start: timeline omitted entirely -> neutral maintenance score (unchanged
-    # behaviour), minus a structured open recall if one is known.
-    if timeline is None:
+    # No service data (timeline omitted, or provided with zero events): the
+    # maintenance component is not scored. maintenance_score stays None; the
+    # open-recall flag is still surfaced independently.
+    if timeline is None or not timeline.events:
         return HealthResult(
             status="insufficient_data", score=None, confidence=None,
             factors=factors, flags=flags, has_open_recall=has_open_recall,
-            maintenance_score=max(0.0, 100.0 - recall_penalty),
-        )
-
-    # Timeline provided but empty -> Insufficient Data; component not scored.
-    if not timeline.events:
-        return HealthResult(
-            status="insufficient_data", score=None, confidence=None,
-            factors=factors, flags=flags, has_open_recall=has_open_recall,
-            maintenance_score=max(0.0, 100.0 - recall_penalty),
+            maintenance_score=None,
         )
 
     events, conflict = _resolve_conflicts(timeline.events)
@@ -273,14 +269,15 @@ def generate_score(vehicle_id: str, request: ScoreRequest) -> dict:
         for f in factors:
             f.impact = round(f.impact / total_impact, 2)
             
-    composite = (m_score * 0.4) + (u_score * 0.6)
+    # composite is null whenever maintenance_score is null — never a usage-only blend.
+    composite = None if m_score is None else (m_score * 0.4) + (u_score * 0.6)
     
     result = {
         "score_id": str(uuid.uuid4()),
         "vehicle_id": vehicle_id,
         "usage_score": round(u_score, 2),
-        "maintenance_score": round(m_score, 2),
-        "composite_score": round(composite, 2),
+        "maintenance_score": None if m_score is None else round(m_score, 2),
+        "composite_score": None if composite is None else round(composite, 2),
         "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "model_version": MODEL_VERSION,
         "contributing_factors": [f.model_dump() for f in factors],

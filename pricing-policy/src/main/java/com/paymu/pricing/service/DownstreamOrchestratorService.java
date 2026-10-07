@@ -56,14 +56,14 @@ public class DownstreamOrchestratorService {
      * Fetches data from all three upstreams and posts to the scoring engine.
      * Returns null if the scoring engine itself is unavailable (caller handles as cold-start).
      */
-    public ScoreResponse fetchScore(String vehicleId) {
+    public ScoreResponse fetchScore(String vehicleId, int vehicleAgeMonths) {
         JsonNode timeline = fetchJson(maintenanceUrl + "/timeline/" + vehicleId, "maintenance timeline");
         JsonNode tripAggregates = fetchJson(telematicsUrl + "/aggregates/" + vehicleId, "trip aggregates");
         JsonNode recallStatus = fetchJson(maintenanceUrl + "/recall-status/" + vehicleId, "recall status");
 
         // Build the ScoreRequest payload
         try {
-            var requestPayload = buildScorePayload(vehicleId, timeline, tripAggregates, recallStatus);
+            var requestPayload = buildScorePayload(vehicleId, vehicleAgeMonths, timeline, tripAggregates, recallStatus);
             String payloadJson = objectMapper.writeValueAsString(requestPayload);
 
             String responseBody = restClient.post()
@@ -119,9 +119,11 @@ public class DownstreamOrchestratorService {
      * upstream services. Each field is optional — absent fields result in a
      * cold-start neutral score from the engine.
      */
-    private java.util.Map<String, Object> buildScorePayload(String vehicleId, JsonNode timeline,
+    private java.util.Map<String, Object> buildScorePayload(String vehicleId, int vehicleAgeMonths, JsonNode timeline,
                                                              JsonNode tripAggregates, JsonNode recallStatus) {
         var payload = new java.util.LinkedHashMap<String, Object>();
+        
+        payload.put("vehicle_age_months", vehicleAgeMonths);
 
         // service_timeline: the maintenance service returns a ServiceTimeline object
         if (timeline != null && !timeline.isNull()) {

@@ -143,6 +143,8 @@ class PricingEngineTest {
         assertEquals(80.0, resp.scoreDetail().usageScore());
         assertEquals(90.0, resp.scoreDetail().maintenanceScore());
         assertEquals(86.0, resp.scoreDetail().compositeScore());
+        assertEquals("scored", resp.scoreDetail().healthStatus());
+        assertEquals("Dynamic Risk Multiplier is illustrative, pending actuarial validation on real claims data (Phase A).", resp.methodologyNote());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -153,8 +155,10 @@ class PricingEngineTest {
     private ScoreResponse score(Double usage, Double maintenance, Double composite) {
         return new ScoreResponse("s-123", "v-123",
                 usage != null ? usage : 0.0,
-                maintenance != null ? maintenance : 0.0,
+                maintenance,
                 composite,
-                "2026-09-25T10:00:00Z", "v1", java.util.List.of());
+                "2026-09-25T10:00:00Z", "v1", 
+                "scored", maintenance, "verified", "renew", false, java.util.List.of(),
+                java.util.List.of());
     }
 }

@@ -64,7 +64,8 @@ public class PricingController {
 
         log.info("Computing quote for vehicle {} (requestId={})", vehicleId, requestId);
 
-        ScoreResponse score = orchestrator.fetchScore(vehicleId);
+        int vehicleAgeMonths = pricingEngine.getVehicleAgeMonths(vehicleId);
+        ScoreResponse score = orchestrator.fetchScore(vehicleId, vehicleAgeMonths);
 
         if (score == null) {
             log.info("No score available for vehicle {} — applying cold-start neutral pricing", vehicleId);

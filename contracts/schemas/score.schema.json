@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/score/v1.0.1",
+  "$id": "https://payasyoumaintain.com/schemas/score/v1.1.0",
   "title": "Risk Score",
   "description": "Output of the risk-scoring-engine. Contains usage and maintenance scores for a vehicle, along with contributing factors for explainability and regulatory transparency.",
   "type": "object",
@@ -30,16 +30,16 @@
       "description": "Driving behaviour / usage risk score (0 = highest risk, 100 = lowest risk)."
     },
     "maintenance_score": {
-      "type": "number",
+      "type": ["number", "null"],
       "minimum": 0,
       "maximum": 100,
-      "description": "Maintenance adherence score (0 = poorest adherence, 100 = perfect adherence)."
+      "description": "Maintenance adherence score (0 = poorest adherence, 100 = perfect adherence). Null when health_status is 'insufficient_data'."
     },
     "composite_score": {
-      "type": "number",
+      "type": ["number", "null"],
       "minimum": 0,
       "maximum": 100,
-      "description": "Weighted composite of usage and maintenance scores (optional — computed by pricing-policy if not provided)."
+      "description": "Weighted composite of usage and maintenance scores (optional — computed by pricing-policy if not provided). MUST be null whenever maintenance_score is null; never a usage-only blend."
     },
     "computed_at": {
       "type": "string",
@@ -71,8 +71,8 @@
       "description": "Advisory renewal recommendation text. Never phrased as a denial."
     },
     "has_open_recall": {
-      "type": "boolean",
-      "description": "Open-recall flag from the structured recall-status source, surfaced independently of the score."
+      "type": ["boolean", "null"],
+      "description": "Open-recall flag from the structured recall-status source, surfaced independently of the score. true/false when known; null means unknown/unavailable and must never be collapsed to false."
     },
     "data_flags": {
       "type": "array",
