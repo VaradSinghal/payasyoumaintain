@@ -8,8 +8,9 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 class AuthState {
   final bool isLoading;
   final String? vehicleId;
+  final String? policyId;
 
-  AuthState({this.isLoading = true, this.vehicleId});
+  AuthState({this.isLoading = true, this.vehicleId, this.policyId});
 }
 
 class AuthNotifier extends Notifier<AuthState> {
@@ -24,17 +25,20 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> _init() async {
     final vehicleId = await _storage.read(key: 'vehicle_id');
-    state = AuthState(isLoading: false, vehicleId: vehicleId);
+    final policyId = await _storage.read(key: 'policy_id');
+    state = AuthState(isLoading: false, vehicleId: vehicleId, policyId: policyId);
   }
 
-  Future<void> login(String vehicleId) async {
+  Future<void> login(String vehicleId, String policyId) async {
     await _storage.write(key: 'vehicle_id', value: vehicleId);
-    state = AuthState(isLoading: false, vehicleId: vehicleId);
+    await _storage.write(key: 'policy_id', value: policyId);
+    state = AuthState(isLoading: false, vehicleId: vehicleId, policyId: policyId);
   }
 
   Future<void> logout() async {
     await _storage.delete(key: 'vehicle_id');
-    state = AuthState(isLoading: false, vehicleId: null);
+    await _storage.delete(key: 'policy_id');
+    state = AuthState(isLoading: false, vehicleId: null, policyId: null);
   }
 }
 

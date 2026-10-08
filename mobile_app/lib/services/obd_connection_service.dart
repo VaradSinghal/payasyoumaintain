@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/models.dart';
+import '../providers/api_providers.dart';
+import '../providers/auth_provider.dart';
 
 enum ConnectionType { none, real, simulated }
 
@@ -119,18 +123,24 @@ class ObdConnectionService extends Notifier<ObdState> {
     return false;
   }
 
-  void _postReading(List<String> confirmed, List<String> pending) {
-    // Send to backend via HTTP (mocked for now, or real API client)
-    final payload = {
-      "vehicle_id": "mock-vehicle-id",
-      "timestamp": DateTime.now().toIso8601String(),
-      "confirmed_codes": confirmed,
-      "pending_codes": pending,
-      "source": "obd_device",
-      "device_id": "mock-dongle-123"
-    };
-    print("Posting reading to backend: $payload");
-    // TODO: Send via MaintenanceApiClient
+  void _postReading(List<String> confirmed, List<String> pending) async {
+    final vehicleId = ref.read(authProvider).vehicleId;
+    if (vehicleId == null) return;
+
+    final reading = DtcReading(
+      vehicleId: vehicleId,
+      timestamp: DateTime.now().toUtc().toIso8601String(),
+      confirmedCodes: confirmed,
+      pendingCodes: pending,
+      source: "obd_device",
+      deviceId: "mock-dongle-123",
+    );
+
+    try {
+      await ref.read(maintenanceApiProvider).postDtcReading(reading);
+    } catch (e) {
+      debugPrint("Failed to post DTC reading: $e");
+    }
   }
 
   void disposeTimer() {

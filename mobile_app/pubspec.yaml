@@ -37,6 +37,8 @@ dependencies:
   flutter_riverpod: ^3.4.3
   go_router: ^18.0.1
   flutter_secure_storage: ^11.2.0
+  dio: ^5.11.1
+  flutter_blue_plus: ^2.3.14
 
 dev_dependencies:
   flutter_test:

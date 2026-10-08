@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/obd_connection_service.dart';
+import '../providers/api_providers.dart';
+import '../providers/auth_provider.dart';
+import '../models/models.dart';
 
 class DiagnosticsScreen extends ConsumerStatefulWidget {
   const DiagnosticsScreen({super.key});
@@ -249,26 +252,36 @@ class _ManualEntryFormState extends ConsumerState<ManualEntryForm> {
 
   final List<String> _commonCodes = ['P0101', 'P0300', 'P0420', 'U0100'];
 
-  void _submit() {
+  void _submit() async {
     final codes = _isLightOn == true && _codeController.text.isNotEmpty
         ? [_codeController.text.trim().toUpperCase()]
         : <String>[];
+        
+    final vehicleId = ref.read(authProvider).vehicleId;
+    if (vehicleId == null) return;
 
-    final payload = {
-      "vehicle_id": "mock-vehicle-id",
-      "timestamp": DateTime.now().toIso8601String(),
-      "confirmed_codes": codes,
-      "pending_codes": [],
-      "source": "manual_entry",
-      "device_id": null
-    };
-    
-    print("Submitting manual entry to POST /api/v1/dtc-readings: $payload");
-    
-    Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Manual entry submitted successfully')),
+    final reading = DtcReading(
+      vehicleId: vehicleId,
+      timestamp: DateTime.now().toUtc().toIso8601String(),
+      confirmedCodes: codes,
+      pendingCodes: [],
+      source: "manual_entry",
+      deviceId: null,
     );
+    
+    try {
+      await ref.read(maintenanceApiProvider).postDtcReading(reading);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Manual entry submitted successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to submit reading: $e')),
+      );
+    }
   }
 
   @override
@@ -294,7 +307,9 @@ class _ManualEntryFormState extends ConsumerState<ManualEntryForm> {
                 child: RadioListTile<bool>(
                   title: const Text('Yes'),
                   value: true,
+                  // ignore: deprecated_member_use
                   groupValue: _isLightOn,
+                  // ignore: deprecated_member_use
                   onChanged: (val) => setState(() => _isLightOn = val),
                 ),
               ),
@@ -302,7 +317,9 @@ class _ManualEntryFormState extends ConsumerState<ManualEntryForm> {
                 child: RadioListTile<bool>(
                   title: const Text('No'),
                   value: false,
+                  // ignore: deprecated_member_use
                   groupValue: _isLightOn,
+                  // ignore: deprecated_member_use
                   onChanged: (val) => setState(() => _isLightOn = val),
                 ),
               ),
