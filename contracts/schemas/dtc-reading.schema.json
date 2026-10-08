@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://paymu.com/schemas/dtc-reading.schema.json",
+  "title": "DtcReading",
+  "description": "A reading of Diagnostic Trouble Codes (DTC) from a vehicle.",
+  "type": "object",
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the vehicle."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when the reading was taken."
+    },
+    "dtc_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[PBCU][01][0-9A-F]{3}$"
+      },
+      "description": "List of Diagnostic Trouble Codes."
+    },
+    "confirmed": {
+      "type": "boolean",
+      "description": "true for Mode 03 stored codes, false for Mode 07 pending codes."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "obd_device",
+        "manual_entry"
+      ],
+      "description": "The source of the DTC reading."
+    },
+    "device_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ID of the OBD device, if source is obd_device. Null otherwise."
+    }
+  },
+  "required": [
+    "vehicle_id",
+    "timestamp",
+    "dtc_codes",
+    "confirmed",
+    "source"
+  ],
+  "additionalProperties": false
+}

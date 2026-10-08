@@ -25,30 +25,44 @@ public class SchemaValidationService {
     private static final Logger log = LoggerFactory.getLogger(SchemaValidationService.class);
     private static final String SCHEMA_PATH = "/schemas/maintenance-event.schema.json";
 
+    private static final String DTC_SCHEMA_PATH = "/schemas/dtc-reading.schema.json";
+
     private final JsonSchema maintenanceEventSchema;
+    private final JsonSchema dtcReadingSchema;
 
     public SchemaValidationService() {
         JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+        
         try (InputStream is = getClass().getResourceAsStream(SCHEMA_PATH)) {
             if (is == null) {
-                throw new IllegalStateException(
-                        "Contract schema not found on classpath: " + SCHEMA_PATH
-                                + ". Ensure the maven-resources-plugin has run (mvn generate-resources).");
+                throw new IllegalStateException("Contract schema not found on classpath: " + SCHEMA_PATH);
             }
             this.maintenanceEventSchema = factory.getSchema(is);
-            log.info("Loaded maintenance-event contract schema from classpath: {}", SCHEMA_PATH);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to load contract schema", e);
+            throw new IllegalStateException("Failed to load maintenance contract schema", e);
+        }
+
+        try (InputStream is = getClass().getResourceAsStream(DTC_SCHEMA_PATH)) {
+            if (is == null) {
+                throw new IllegalStateException("Contract schema not found on classpath: " + DTC_SCHEMA_PATH);
+            }
+            this.dtcReadingSchema = factory.getSchema(is);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load dtc reading schema", e);
         }
     }
 
     /**
      * Validates a single JSON event node against the maintenance-event schema.
-     *
-     * @param event the raw JSON node to validate
-     * @return a set of validation messages; empty if the event is valid
      */
     public Set<ValidationMessage> validate(JsonNode event) {
         return maintenanceEventSchema.validate(event);
+    }
+
+    /**
+     * Validates a single JSON event node against the dtc-reading schema.
+     */
+    public Set<ValidationMessage> validateDtc(JsonNode event) {
+        return dtcReadingSchema.validate(event);
     }
 }
