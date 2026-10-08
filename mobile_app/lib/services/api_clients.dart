@@ -88,13 +88,23 @@ class PricingPolicyApi {
           DiscountBreakdown(reason: 'Good Maintenance', adjustmentPct: -5.0),
         ],
         scoreDetail: ScoreDetail(
+          usageScore: 92.0,
           maintenanceScore: 85.0,
           compositeScore: 90.0,
           vehicleHealthScore: 88.0,
-          healthConfidence: 0.95,
+          healthStatus: 'scored',
+          healthConfidence: 'verified',
           hasOpenRecall: false,
           dataFlags: [],
           renewalRecommendation: 'RENEW',
+          contributingFactors: [
+            ContributingFactor(
+              factorName: 'safe_driving_bonus',
+              impact: 0.8,
+              direction: 'positive',
+              description: 'Safe driving history',
+            )
+          ],
         ),
         methodologyNote: 'Demo methodology',
       );

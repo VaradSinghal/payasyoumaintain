@@ -43,34 +43,69 @@ class DiscountBreakdown {
   }
 }
 
+class ContributingFactor {
+  final String factorName;
+  final double impact;
+  final String direction;
+  final String? description;
+
+  ContributingFactor({
+    required this.factorName,
+    required this.impact,
+    required this.direction,
+    this.description,
+  });
+
+  factory ContributingFactor.fromJson(Map<String, dynamic> json) {
+    return ContributingFactor(
+      factorName: json['factor_name'] as String,
+      impact: (json['impact'] as num).toDouble(),
+      direction: json['direction'] as String,
+      description: json['description'] as String?,
+    );
+  }
+}
+
 class ScoreDetail {
+  final double? usageScore;
   final double? maintenanceScore;
   final double? compositeScore;
   final double? vehicleHealthScore;
-  final double? healthConfidence;
+  final String? healthStatus;
+  final String? healthConfidence;
   final bool? hasOpenRecall;
   final List<String> dataFlags;
   final String? renewalRecommendation;
+  final List<ContributingFactor> contributingFactors;
 
   ScoreDetail({
+    this.usageScore,
     this.maintenanceScore,
     this.compositeScore,
     this.vehicleHealthScore,
+    this.healthStatus,
     this.healthConfidence,
     this.hasOpenRecall,
     required this.dataFlags,
     this.renewalRecommendation,
+    required this.contributingFactors,
   });
 
   factory ScoreDetail.fromJson(Map<String, dynamic> json) {
     return ScoreDetail(
+      usageScore: (json['usage_score'] as num?)?.toDouble(),
       maintenanceScore: (json['maintenance_score'] as num?)?.toDouble(),
       compositeScore: (json['composite_score'] as num?)?.toDouble(),
       vehicleHealthScore: (json['vehicle_health_score'] as num?)?.toDouble(),
-      healthConfidence: (json['health_confidence'] as num?)?.toDouble(),
+      healthStatus: json['health_status'] as String?,
+      healthConfidence: json['health_confidence'] as String?,
       hasOpenRecall: json['has_open_recall'] as bool?,
       dataFlags: (json['data_flags'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
       renewalRecommendation: json['renewal_recommendation'] as String?,
+      contributingFactors: (json['contributing_factors'] as List<dynamic>?)
+              ?.map((e) => ContributingFactor.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 }
@@ -153,6 +188,7 @@ class FnolRequest {
   final String incidentDate;
   final String claimedCause;
   final String incidentDescription;
+  final List<String> photos;
 
   FnolRequest({
     required this.vehicleId,
@@ -160,6 +196,7 @@ class FnolRequest {
     required this.incidentDate,
     required this.claimedCause,
     required this.incidentDescription,
+    this.photos = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -169,6 +206,7 @@ class FnolRequest {
       'incident_date': incidentDate,
       'claimed_cause': claimedCause,
       'incident_description': incidentDescription,
+      'photos': photos,
     };
   }
 }

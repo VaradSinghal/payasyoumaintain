@@ -4,6 +4,8 @@ import '../services/obd_connection_service.dart';
 import '../providers/api_providers.dart';
 import '../providers/auth_provider.dart';
 import '../models/models.dart';
+import '../providers/dtc_provider.dart';
+import '../widgets/shared_widgets.dart';
 
 class DiagnosticsScreen extends ConsumerStatefulWidget {
   const DiagnosticsScreen({super.key});
@@ -127,6 +129,45 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             ),
           ),
         ),
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 24),
+        
+        Text('Latest Reading (from server)', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        ref.watch(latestDtcProvider).when(
+          data: (reading) {
+            if (reading == null) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No check yet'),
+                ),
+              );
+            }
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Last checked: ${reading.timestamp.split('.')[0]}', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 16),
+                    Text('Confirmed Codes', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    _buildCodeList(reading.confirmedCodes),
+                    const SizedBox(height: 16),
+                    Text('Pending Codes', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    _buildCodeList(reading.pendingCodes),
+                  ],
+                ),
+              ),
+            );
+          },
+          loading: () => const AppLoading(message: 'Loading latest reading...'),
+          error: (e, st) => AppError(message: e.toString(), onRetry: () => ref.invalidate(latestDtcProvider)),
+        ),
       ],
     );
   }
@@ -212,7 +253,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             children: [
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 8),
-              Text('No faults detected'),
+              Text('checked, no faults', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
