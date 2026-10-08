@@ -1,30 +1,40 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+enum ConnectionType { none, real, simulated }
+
 class ObdState {
   final bool isConnected;
+  final ConnectionType connectionType;
   final List<String> confirmedCodes;
   final List<String> pendingCodes;
   final DateTime? lastChecked;
+  final bool newCodeDetected;
 
   ObdState({
     this.isConnected = false,
+    this.connectionType = ConnectionType.none,
     this.confirmedCodes = const [],
     this.pendingCodes = const [],
     this.lastChecked,
+    this.newCodeDetected = false,
   });
 
   ObdState copyWith({
     bool? isConnected,
+    ConnectionType? connectionType,
     List<String>? confirmedCodes,
     List<String>? pendingCodes,
     DateTime? lastChecked,
+    bool? newCodeDetected,
   }) {
     return ObdState(
       isConnected: isConnected ?? this.isConnected,
+      connectionType: connectionType ?? this.connectionType,
       confirmedCodes: confirmedCodes ?? this.confirmedCodes,
       pendingCodes: pendingCodes ?? this.pendingCodes,
       lastChecked: lastChecked ?? this.lastChecked,
+      newCodeDetected: newCodeDetected ?? this.newCodeDetected,
     );
   }
 }
@@ -37,11 +47,20 @@ class ObdConnectionService extends Notifier<ObdState> {
     return ObdState();
   }
 
-  void connect() {
-    state = state.copyWith(isConnected: true, lastChecked: DateTime.now());
+  void connectReal() {
+    _connect(ConnectionType.real);
+  }
+
+  void connectSimulated() {
+    _connect(ConnectionType.simulated);
+  }
+
+  void _connect(ConnectionType type) {
+    state = state.copyWith(isConnected: true, connectionType: type, lastChecked: DateTime.now(), newCodeDetected: false);
     // Post initial healthy reading (empty lists) on connect
     _postReading([], []);
     
+    _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _pollDtcCodes();
     });
@@ -49,22 +68,34 @@ class ObdConnectionService extends Notifier<ObdState> {
 
   void disconnect() {
     _pollingTimer?.cancel();
-    state = state.copyWith(isConnected: false);
+    state = state.copyWith(isConnected: false, connectionType: ConnectionType.none, newCodeDetected: false);
+  }
+
+  void checkNow() {
+    _pollDtcCodes();
   }
 
   void _pollDtcCodes() {
-    // Simulated mock codes
+    // Simulated mock codes that occasionally change.
+    // For demo, we just add a pending code if there are none, or change it around.
     final currentConfirmed = ['P0101'];
-    final currentPending = ['U0100'];
+    final currentPending = state.pendingCodes.isEmpty ? ['U0100'] : ['U0100', 'P0300'];
 
     if (_hasChanged(currentConfirmed, currentPending)) {
       state = state.copyWith(
         confirmedCodes: currentConfirmed,
         pendingCodes: currentPending,
         lastChecked: DateTime.now(),
+        newCodeDetected: true,
       );
       _postReading(currentConfirmed, currentPending);
+    } else {
+      state = state.copyWith(lastChecked: DateTime.now(), newCodeDetected: false);
     }
+  }
+
+  void clearNewCodeFlag() {
+    state = state.copyWith(newCodeDetected: false);
   }
 
   bool _hasChanged(List<String> newConfirmed, List<String> newPending) {

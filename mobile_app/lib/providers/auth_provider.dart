@@ -12,11 +12,14 @@ class AuthState {
   AuthState({this.isLoading = true, this.vehicleId});
 }
 
-class AuthNotifier extends StateNotifier<AuthState> {
-  final FlutterSecureStorage _storage;
+class AuthNotifier extends Notifier<AuthState> {
+  late FlutterSecureStorage _storage;
 
-  AuthNotifier(this._storage) : super(AuthState()) {
+  @override
+  AuthState build() {
+    _storage = ref.watch(secureStorageProvider);
     _init();
+    return AuthState();
   }
 
   Future<void> _init() async {
@@ -35,7 +38,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final storage = ref.watch(secureStorageProvider);
-  return AuthNotifier(storage);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(() {
+  return AuthNotifier();
 });

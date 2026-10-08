@@ -63,7 +63,7 @@ public class DtcController {
     public ResponseEntity<DtcReading> getLatest(@PathVariable String vehicleId) {
         DtcReading latest = store.getLatest(vehicleId);
         if (latest == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.noContent().build();
         }
         return ResponseEntity.ok(latest);
     }
@@ -71,9 +71,6 @@ public class DtcController {
     @GetMapping("/{vehicleId}/history")
     public ResponseEntity<List<DtcReading>> getHistory(@PathVariable String vehicleId) {
         List<DtcReading> history = store.getHistory(vehicleId);
-        if (history.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
         return ResponseEntity.ok(history);
     }
 }

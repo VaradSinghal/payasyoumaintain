@@ -7,8 +7,8 @@ import java.util.List;
 public record DtcReading(
         @JsonProperty("vehicle_id") String vehicleId,
         @JsonProperty("timestamp") String timestamp,
-        @JsonProperty("dtc_codes") List<String> dtcCodes,
-        @JsonProperty("confirmed") boolean confirmed,
+        @JsonProperty("confirmed_codes") List<String> confirmedCodes,
+        @JsonProperty("pending_codes") List<String> pendingCodes,
         @JsonProperty("source") String source,
         @JsonProperty("device_id") String deviceId
 ) {

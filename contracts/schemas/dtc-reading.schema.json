@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://paymu.com/schemas/dtc-reading.schema.json",
+  "$id": "https://paymu.com/schemas/dtc-reading.schema.json/v1.1.0",
   "title": "DtcReading",
   "description": "A reading of Diagnostic Trouble Codes (DTC) from a vehicle.",
   "type": "object",
@@ -15,17 +15,21 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp of when the reading was taken."
     },
-    "dtc_codes": {
+    "confirmed_codes": {
       "type": "array",
       "items": {
         "type": "string",
         "pattern": "^[PBCU][01][0-9A-F]{3}$"
       },
-      "description": "List of Diagnostic Trouble Codes."
+      "description": "List of Mode 03 stored/confirmed Diagnostic Trouble Codes."
     },
-    "confirmed": {
-      "type": "boolean",
-      "description": "true for Mode 03 stored codes, false for Mode 07 pending codes."
+    "pending_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[PBCU][01][0-9A-F]{3}$"
+      },
+      "description": "List of Mode 07 pending Diagnostic Trouble Codes."
     },
     "source": {
       "type": "string",
@@ -46,9 +50,28 @@
   "required": [
     "vehicle_id",
     "timestamp",
-    "dtc_codes",
-    "confirmed",
+    "confirmed_codes",
+    "pending_codes",
     "source"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "source": { "const": "obd_device" } }
+      },
+      "then": {
+        "properties": { "device_id": { "type": "string" } },
+        "required": ["device_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "source": { "const": "manual_entry" } }
+      },
+      "then": {
+        "properties": { "device_id": { "type": "null" } }
+      }
+    }
   ],
   "additionalProperties": false
 }

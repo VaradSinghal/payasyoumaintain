@@ -19,7 +19,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`score.schema.json`](schemas/score.schema.json) | v1.1.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
 | [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.0.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
-| [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
+| [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
 
 ## Versioning Policy
 
@@ -50,6 +50,7 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-07 | `score.schema.json` | v1.0.0 | v1.0.1 | **Patch** | Added optional `health_status`, `vehicle_health_score` (nullable), `health_confidence`, `renewal_recommendation`, `has_open_recall`, `data_flags` for the Phase A vehicle-health score. |
 | 2026-10-08 | `score.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening, consumer-breaking) | `maintenance_score` (required), `composite_score` and `has_open_recall` widened from non-null to nullable. Previously these fields could only express a concrete value, so a `false` / `100` could actually mean "unknown" (recall source unavailable, or no service events on file). `null` now means unknown and must never be collapsed to `false` or a neutral number. Versioned as Minor per project decision; note the Versioning Policy table would classify a type change as Major, so consumers must still handle `null` before the producer emits it (see rollout rule 5). |
 | 2026-10-08 | `dtc-reading.schema.json` | — | v1.0.0 | **New** | Introduced DTC reading schema (obd_device / manual_entry). Produced by maintenance-vehicle-health-ingestion, explicitly not wired into risk-scoring-engine yet. Patch-equivalent additive addition. |
+| 2026-10-08 | `dtc-reading.schema.json` | v1.0.0 | v1.1.0 | **Minor** | Replaced `dtc_codes` and `confirmed` with two required arrays: `confirmed_codes` and `pending_codes` (a single boolean couldn't represent a poll returning both stored and pending codes). Added conditional `device_id` rules. |
 
 ### Null semantics in `score.schema.json` (v1.1.0)
 
