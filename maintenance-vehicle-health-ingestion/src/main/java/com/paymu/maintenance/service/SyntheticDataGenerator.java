@@ -3,7 +3,7 @@ package com.paymu.maintenance.service;
 import com.paymu.maintenance.model.MaintenanceEvent;
 import com.paymu.maintenance.model.PartReplaced;
 import com.paymu.maintenance.model.RecallDetail;
-import com.paymu.maintenance.model.RecallStatus;
+
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;

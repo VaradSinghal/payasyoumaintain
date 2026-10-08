@@ -5,8 +5,6 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -22,7 +20,7 @@ import java.util.Set;
 @Service
 public class SchemaValidationService {
 
-    private static final Logger log = LoggerFactory.getLogger(SchemaValidationService.class);
+
     private static final String SCHEMA_PATH = "/schemas/maintenance-event.schema.json";
 
     private static final String DTC_SCHEMA_PATH = "/schemas/dtc-reading.schema.json";

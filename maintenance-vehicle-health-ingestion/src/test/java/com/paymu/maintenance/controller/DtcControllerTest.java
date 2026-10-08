@@ -1,7 +1,6 @@
 package com.paymu.maintenance.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paymu.maintenance.model.DtcReading;
+
 import com.paymu.maintenance.service.DtcStore;
 import com.paymu.maintenance.service.SchemaValidationService;
 import org.junit.jupiter.api.BeforeEach;
