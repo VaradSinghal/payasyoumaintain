@@ -83,9 +83,9 @@ def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
 
     # Recall handling. Notes text is NEVER read — recall_status is the sole source.
     rs = request.recall_status
-    recall_unavailable = rs is not None and rs.availability == "unavailable"
+    recall_unavailable = rs is None or rs.availability == "unavailable"
     recall_confirmed_open = bool(rs is not None and not recall_unavailable and rs.has_open_recall)
-    # Unavailable -> null (unknown), distinct from a confirmed False.
+    # Unavailable or omitted -> null (unknown), distinct from a confirmed False.
     has_open_recall = None if recall_unavailable else recall_confirmed_open
     if recall_unavailable:
         flags.append("recall_status_unavailable")

@@ -44,8 +44,8 @@ public class DownstreamDataService {
     @Value("${services.scoring-url}")
     private String scoringUrl;
 
-    public DownstreamDataService(ObjectMapper objectMapper) {
-        this.restClient = RestClient.create();
+    public DownstreamDataService(ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
+        this.restClient = restClientBuilder.build();
         this.objectMapper = objectMapper;
     }
 
@@ -58,7 +58,11 @@ public class DownstreamDataService {
     }
 
     public RecallStatus fetchRecallStatus(String vehicleId) {
-        return get(maintenanceUrl + "/recall-status/" + vehicleId, RecallStatus.class, "recall status");
+        RecallStatus status = get(maintenanceUrl + "/recall-status/" + vehicleId, RecallStatus.class, "recall status");
+        if (status == null) {
+            return new RecallStatus(vehicleId, "unavailable", null, 0, java.util.Collections.emptyList(), "", "");
+        }
+        return status;
     }
 
     /**

@@ -173,17 +173,18 @@ class TriageServiceTest {
         TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
 
         assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
-        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("No open recall")));
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("Confirmed no open recall")));
     }
 
     @Test
-    @DisplayName("STP: mechanical failure with no service history and no recall")
-    void mechanicalFailure_noHistory_noRecall_isStraightThrough() {
+    @DisplayName("MANUAL_REVIEW: mechanical failure with missing recall")
+    void mechanicalFailure_missingRecall_isManualReview() {
         FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
 
         TriageService.TriageResult result = triageService.triage(request, null, null);
 
-        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertTrue(result.reasons().stream().anyMatch(r -> r.contains("recall_status_unavailable")));
     }
 
     @Test

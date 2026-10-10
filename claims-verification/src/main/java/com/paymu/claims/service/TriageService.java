@@ -101,7 +101,7 @@ public class TriageService {
 
         // ── Neither signal fired → plausible, STP ─────────────────────────────
         reasons.add("Claimed cause is 'mechanical_failure'.");
-        reasons.add("No open recall on file and no clean service record found within the last "
+        reasons.add("Confirmed no open recall on file and no clean service record found within the last "
                 + cleanServiceWindowDays + " days — claim is plausible.");
         maintenanceSignal = "No disqualifying maintenance signals found.";
         return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
@@ -115,7 +115,12 @@ public class TriageService {
      * route to MANUAL_REVIEW.
      */
     private boolean evaluateRecall(RecallStatus recall, List<String> reasons) {
-        if (recall != null && recall.hasOpenRecall()) {
+        if (recall == null) {
+            reasons.add("Claimed cause is 'mechanical_failure'.");
+            reasons.add("recall_status_unavailable");
+            return true;
+        }
+        if (recall.hasOpenRecall()) {
             reasons.add("Claimed cause is 'mechanical_failure'.");
             reasons.add("open_recall_on_file: vehicle has " + recall.recallCount()
                     + " open manufacturer recall(s) — a pending recall increases mechanical failure"

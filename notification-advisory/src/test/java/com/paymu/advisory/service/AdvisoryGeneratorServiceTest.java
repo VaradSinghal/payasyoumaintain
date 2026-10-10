@@ -29,7 +29,7 @@ class AdvisoryGeneratorServiceTest {
 
     private RecallStatus openRecall() {
         return new RecallStatus(
-                "v-001", true, 1,
+                "v-001", "available", true, 1,
                 List.of(new RecallStatus.RecallDetail(
                         "RC-2026-0042", "Battery management thermal risk", "2026-03-15")),
                 "oem_recall_db", "2026-09-23T10:00:00Z"
@@ -37,7 +37,7 @@ class AdvisoryGeneratorServiceTest {
     }
 
     private RecallStatus noRecall() {
-        return new RecallStatus("v-001", false, 0, List.of(), "oem_recall_db", "2026-09-23T10:00:00Z");
+        return new RecallStatus("v-001", "available", false, 0, List.of(), "oem_recall_db", "2026-09-23T10:00:00Z");
     }
 
     private ServiceTimeline recentTimeline() {

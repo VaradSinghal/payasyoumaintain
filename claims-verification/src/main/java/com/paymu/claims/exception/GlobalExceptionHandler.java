@@ -40,6 +40,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+        ex.printStackTrace();
         return ResponseEntity.internalServerError().body(Map.of(
                 "error", "INTERNAL_ERROR",
                 "message", "An unexpected error occurred.",

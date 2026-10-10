@@ -48,7 +48,7 @@ public class AdvisoryGeneratorService {
         List<AdvisoryMessage> messages = new ArrayList<>();
 
         // ── 1. CRITICAL: Open recall ──────────────────────────────────────────
-        if (recall != null && recall.hasOpenRecall()) {
+        if (recall != null && Boolean.TRUE.equals(recall.hasOpenRecall())) {
             String detail = buildRecallDetail(recall);
             messages.add(new AdvisoryMessage(
                     "OPEN_RECALL",

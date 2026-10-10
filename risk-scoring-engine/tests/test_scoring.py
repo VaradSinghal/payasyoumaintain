@@ -392,14 +392,14 @@ def test_self_upload_only_is_capped_at_85():
     assert s["health_confidence"] == "unverified_self_reported"
 
 def test_recall_unavailable_is_not_defaulted_to_zero_penalty_flag_only():
-    # Omitted recall_status: no flag. Explicit unavailable: flagged, still no penalty.
+    # Omitted recall_status: flagged. Explicit unavailable: flagged, still no penalty.
     omitted = generate_score("v", ScoreRequest(
         vehicle_age_months=12,
         service_timeline=tl([ev("e1", 10, "full_service", 1000, "oem_api")])))
     unavail = generate_score("v", ScoreRequest(
         vehicle_age_months=12, recall_status=unavailable_recall("v"),
         service_timeline=tl([ev("e1", 10, "full_service", 1000, "oem_api")])))
-    assert "recall_status_unavailable" not in omitted["data_flags"]
+    assert "recall_status_unavailable" in omitted["data_flags"]
     assert "recall_status_unavailable" in unavail["data_flags"]
 
 def test_open_recall_line_prepended_regardless_of_band():
@@ -419,6 +419,11 @@ def test_has_open_recall_is_null_not_false_when_unavailable():
             recall_status=unavailable_recall("v")))
         assert s["has_open_recall"] is None
         assert "recall_status_unavailable" in s["data_flags"]
+        
+        s_omitted = generate_score("v", ScoreRequest(
+            vehicle_age_months=12, service_timeline=timeline))
+        assert s_omitted["has_open_recall"] is None
+        assert "recall_status_unavailable" in s_omitted["data_flags"]
     # Confirmed 'no recall' remains a distinct, concrete False.
     confirmed = generate_score("v", ScoreRequest(
         recall_status=make_recall_status("v", has_open=False)))

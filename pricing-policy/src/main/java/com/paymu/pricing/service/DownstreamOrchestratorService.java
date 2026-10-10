@@ -47,9 +47,9 @@ public class DownstreamOrchestratorService {
     @Value("${services.scoring-url}")
     private String scoringUrl;
 
-    public DownstreamOrchestratorService(ObjectMapper objectMapper) {
+    public DownstreamOrchestratorService(ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
         this.objectMapper = objectMapper;
-        this.restClient = RestClient.create();
+        this.restClient = restClientBuilder.build();
     }
 
     /**
@@ -92,7 +92,7 @@ public class DownstreamOrchestratorService {
         if (node != null && node.has("policyId")) {
             return node.get("policyId").asText();
         }
-        return null;
+        return java.util.UUID.nameUUIDFromBytes(("policy_" + vehicleId).getBytes()).toString();
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -138,6 +138,11 @@ public class DownstreamOrchestratorService {
         // recall_status: the maintenance service always returns a recall status object
         if (recallStatus != null && !recallStatus.isNull()) {
             payload.put("recall_status", objectMapper.convertValue(recallStatus, Object.class));
+        } else {
+            payload.put("recall_status", java.util.Map.of(
+                "vehicle_id", vehicleId,
+                "availability", "unavailable"
+            ));
         }
 
         return payload;
