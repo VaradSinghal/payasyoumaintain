@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/v1/dtc-readings")
+@RequestMapping("/dtc-readings")
 public class DtcController {
 
     private static final Logger log = LoggerFactory.getLogger(DtcController.class);

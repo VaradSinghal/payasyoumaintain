@@ -6,14 +6,20 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Instant;
 import java.util.Map;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Global exception handler returning structured JSON error responses.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
 
     @ExceptionHandler(SchemaValidationException.class)
     public ResponseEntity<Map<String, Object>> handleSchemaValidation(SchemaValidationException ex) {
@@ -32,6 +38,15 @@ public class GlobalExceptionHandler {
                 "timestamp", Instant.now().toString()));
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "NOT_FOUND",
+                "message", "The requested resource could not be found.",
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(Map.of(
@@ -42,6 +57,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+        logger.error("Unhandled Exception:", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "INTERNAL_ERROR",
                 "message", "An unexpected error occurred.",
