@@ -89,8 +89,8 @@ public class DownstreamOrchestratorService {
      */
     public String fetchPolicyId(String vehicleId) {
         JsonNode node = fetchJson(identityUrl + "/vehicles/" + vehicleId, "vehicle registration");
-        if (node != null && node.has("policyId")) {
-            return node.get("policyId").asText();
+        if (node != null && node.has("policy_id")) {
+            return node.get("policy_id").asText();
         }
         return java.util.UUID.nameUUIDFromBytes(("policy_" + vehicleId).getBytes()).toString();
     }

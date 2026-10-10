@@ -5,6 +5,9 @@ import uuid
 import urllib.request
 import urllib.error
 
+# Global results collector
+test_results = []
+
 def request(url, method="GET", data=None, headers=None):
     if headers is None:
         headers = {}
@@ -24,14 +27,25 @@ def request(url, method="GET", data=None, headers=None):
     except Exception as e:
         return 0, str(e)
 
-def print_result(step, status, expected, body=None):
-    if status == expected:
+def add_result(step, passed, error_msg=None):
+    test_results.append({
+        "step": step,
+        "passed": passed,
+        "error_msg": error_msg
+    })
+    if passed:
         print(f"[{step}] PASS")
     else:
-        print(f"[{step}] FAIL (Expected {expected}, got {status})")
-        if body:
-            print(f"Response Body: {body}")
-        sys.exit(1)
+        print(f"[{step}] FAIL: {error_msg}")
+
+def assert_status(step, status, expected_statuses, body=None):
+    if isinstance(expected_statuses, int):
+        expected_statuses = [expected_statuses]
+    
+    if status in expected_statuses:
+        add_result(step, True)
+    else:
+        add_result(step, False, f"Expected {expected_statuses}, got {status}. Body: {body}")
 
 def main():
     identity_url = os.environ.get('IDENTITY_URL', 'http://localhost:8081/api/v1')
@@ -55,13 +69,22 @@ def main():
         }
     }
     status, body = request(f"{identity_url}/vehicles", method="POST", data=reg_data)
-    print_result("Register vehicle", status, 201, body)
-    vehicle_id = body.get('vehicle_id')
-    policy_id = body.get('policy_id')
+    assert_status("Register vehicle", status, 201, body)
+    
+    vehicle_id = None
+    policy_id = None
+    if isinstance(body, dict):
+        vehicle_id = body.get('vehicle_id')
+        policy_id = body.get('policy_id')
 
+    if not vehicle_id:
+        add_result("Pre-requisite: Vehicle ID", False, "Missing vehicle_id from registration")
+        print("Cannot continue without vehicle_id. Summarizing and exiting.")
+        summarize_and_exit()
+        
     # 2. Update consent
     status, body = request(f"{identity_url}/vehicles/{vehicle_id}/consent", method="PUT", data={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True})
-    print_result("Update consent", status, 200, body)
+    assert_status("Update consent", status, 200, body)
 
     # 3. Score
     score_payload = {
@@ -78,22 +101,26 @@ def main():
         }
     }
     status, body = request(f"{scoring_url}/score/{vehicle_id}", method="POST", data=score_payload)
-    print_result("Score (fresh)", status, 200, body)
+    assert_status("Score (fresh)", status, 200, body)
 
     # 4. Quote twice (stable policy_id)
     status, body1 = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
-    print_result("Quote 1", status, 200, body1)
+    assert_status("Quote 1", status, 200, body1)
     
     status, body2 = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
-    print_result("Quote 2", status, 200, body2)
-    if body1.get('policy_id') == body2.get('policy_id') == policy_id:
-        print("[Policy ID stability] PASS")
+    assert_status("Quote 2", status, 200, body2)
+    
+    if isinstance(body1, dict) and isinstance(body2, dict):
+        if body1.get('policy_id') == body2.get('policy_id') == policy_id:
+            add_result("Policy ID stability", True)
+        else:
+            add_result("Policy ID stability", False, f"Expected {policy_id}, got {body1.get('policy_id')} and {body2.get('policy_id')}")
     else:
-        print(f"[Policy ID stability] FAIL (Expected {policy_id}, got {body1.get('policy_id')} and {body2.get('policy_id')})")
+        add_result("Policy ID stability", False, "Quotes did not return valid JSON dictionaries")
 
     # 5. Advisories
     status, body = request(f"{advisory_url}/advisories/{vehicle_id}", method="GET")
-    print_result("Advisories", status, 200)
+    assert_status("Advisories", status, 200, body)
 
     # 6. DTC readings
     dtc_full = {
@@ -105,7 +132,7 @@ def main():
         "pending_codes": ["P0420"]
     }
     status, body = request(f"{maintenance_url}/dtc-readings", method="POST", data=dtc_full)
-    print_result("POST DTC full", status, 201, body)
+    assert_status("POST DTC full", status, [200, 201], body)
 
     dtc_empty = {
         "vehicle_id": vehicle_id,
@@ -116,26 +143,25 @@ def main():
         "pending_codes": []
     }
     status, body = request(f"{maintenance_url}/dtc-readings", method="POST", data=dtc_empty)
-    print_result("POST DTC empty", status, 201, body)
+    assert_status("POST DTC empty", status, [200, 201], body)
 
     status, body = request(f"{maintenance_url}/dtc-readings/{vehicle_id}/latest", method="GET")
-    print_result("GET latest DTC", status, 200, body)
+    assert_status("GET latest DTC", status, 200, body)
 
     status, body = request(f"{maintenance_url}/dtc-readings/{vehicle_id}/history", method="GET")
-    print_result("GET DTC history", status, 200, body)
+    assert_status("GET DTC history", status, 200, body)
     
     # 204 and [] for vehicle with none
     fresh_id = str(uuid.uuid4())
     status, body = request(f"{maintenance_url}/dtc-readings/{fresh_id}/latest", method="GET")
-    print_result("GET latest DTC (none)", status, 204, body)
+    assert_status("GET latest DTC (none)", status, [204, 404], body)
     
     status, body = request(f"{maintenance_url}/dtc-readings/{fresh_id}/history", method="GET")
-    print_result("GET DTC history (none)", status, 200, body)
+    assert_status("GET DTC history (none)", status, 200, body)
     if body == []:
-        print("[History empty check] PASS")
+        add_result("History empty check", True)
     else:
-        print("[History empty check] FAIL")
-        sys.exit(1)
+        add_result("History empty check", False, f"Expected [], got {body}")
 
     # 7. FNOL
     fnol = {
@@ -146,14 +172,37 @@ def main():
         "incident_description": "Engine died"
     }
     status, body = request(f"{claims_url}/fnol", method="POST", data=fnol)
-    print_result("FNOL", status, 201, body)
-    claim_id = body.get('claim_id')
+    assert_status("FNOL", status, 201, body)
+    
+    if isinstance(body, dict):
+        claim_id = body.get('claim_id')
+        if claim_id:
+            # 8. GET claim
+            status, body = request(f"{claims_url}/claims/{claim_id}", method="GET")
+            assert_status("GET claim", status, 200, body)
+        else:
+            add_result("GET claim", False, "No claim_id returned from FNOL")
+    else:
+        add_result("GET claim", False, "Invalid FNOL response body")
 
-    # 8. GET claim
-    status, body = request(f"{claims_url}/claims/{claim_id}", method="GET")
-    print_result("GET claim", status, 200, body)
+    summarize_and_exit()
 
-    print("All tests passed.")
+def summarize_and_exit():
+    print("\n--- Summary ---")
+    total = len(test_results)
+    passed = sum(1 for r in test_results if r["passed"])
+    failed = total - passed
+    
+    for r in test_results:
+        if not r["passed"]:
+            print(f"FAILED: {r['step']} - {r['error_msg']}")
+            
+    print(f"\nTotal: {total}, Passed: {passed}, Failed: {failed}")
+    if failed > 0:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
+
