@@ -1,0 +1,12 @@
+{
+  "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "timestamp": "2026-10-11T12:00:00Z",
+  "source": "manual_entry",
+  "device_id": null,
+  "confirmed_codes": [
+    "P0300"
+  ],
+  "pending_codes": [
+    "P0171"
+  ]
+}

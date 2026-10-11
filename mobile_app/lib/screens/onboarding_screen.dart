@@ -23,8 +23,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   String? _policyId;
   QuoteResponse? _quote;
 
-  bool _usageTracking = true;
-  bool _maintenanceTracking = true;
+  bool _usageTracking = false;
+  bool _maintenanceTracking = false;
 
   Future<void> _register() async {
     setState(() {
@@ -33,9 +33,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     });
     try {
       final reg = await ref.read(identityApiProvider).registerVehicle({
-        'make': 'Generic',
-        'model': 'Vehicle',
-        'year': 2023,
+        'rc_number': 'MH12AB1234',
+        'registration_date': '2024-01-15',
+        'owner_details': {
+          'full_name': 'PayAsUMaintain User',
+          'kyc_document_number': 'ABCDE1234F',
+          'kyc_document_type': 'PAN',
+          'email': 'user@payasumaintain.com',
+          'phone_number': '9876543210',
+        },
       });
       setState(() {
         _vehicleId = reg.vehicleId;

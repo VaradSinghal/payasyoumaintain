@@ -1,0 +1,11 @@
+{
+  "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+  "incident_date": "2026-10-10T12:00:00Z",
+  "claimed_cause": "mechanical_failure",
+  "incident_description": "Transmission slipping and unusual noise",
+  "photo_refs": [
+    "https://storage.paym.app/claims/photo1.jpg",
+    "https://storage.paym.app/claims/photo2.jpg"
+  ]
+}

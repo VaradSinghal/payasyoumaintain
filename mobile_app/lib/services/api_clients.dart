@@ -12,17 +12,19 @@ Dio _createDio(String baseUrl) {
   ));
   dio.interceptors.add(InterceptorsWrapper(
     onError: (DioException e, handler) {
-      String msg = e.message ?? 'Unknown error';
+      ApiException apiException;
       if (e.response != null && e.response!.data != null) {
-        if (e.response!.data is Map<String, dynamic> && e.response!.data['message'] != null) {
-          msg = e.response!.data['message'].toString();
+        if (e.response!.data is Map<String, dynamic>) {
+          apiException = ApiException.fromJson(e.response?.statusCode, e.response!.data as Map<String, dynamic>);
         } else {
-          msg = e.response!.data.toString();
+          apiException = ApiException(e.response?.statusCode, e.response!.data.toString());
         }
+      } else {
+        apiException = ApiException(e.response?.statusCode, e.message ?? 'Unknown error');
       }
       return handler.next(DioException(
         requestOptions: e.requestOptions,
-        error: ApiException(e.response?.statusCode, msg),
+        error: apiException,
       ));
     },
   ));
