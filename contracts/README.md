@@ -20,6 +20,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
 | [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.1.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 | [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
+| [`trip-aggregate.schema.json`](schemas/trip-aggregate.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, pricing-policy, notification-advisory | Computed per-trip aggregates (speed, distance, harsh braking, hard acceleration) |
 
 ## Versioning Policy
 
@@ -53,6 +54,7 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-08 | `dtc-reading.schema.json` | v1.0.0 | v1.1.0 | **Minor** | Replaced `dtc_codes` and `confirmed` with two required arrays: `confirmed_codes` and `pending_codes` (a single boolean couldn't represent a poll returning both stored and pending codes). Added conditional `device_id` rules. |
 | 2026-10-11 | `score.schema.json` | v1.1.0 | v1.2.0 | **Minor** (type-widening, consumer-breaking) | `usage_score` widened from non-null to nullable; `composite_score` updated to require both component scores. Previously `usage_score` was a required number, which meant "unknown" was represented as a neutral 100. `usage_score` is now `null` when no trip data exists, `composite_score` is `null` unless BOTH `usage_score` and `maintenance_score` are non-null, and `usage_data_unavailable` added to `data_flags`. |
 | 2026-10-11 | `premium-response.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening) | `usage_score`, `maintenance_score`, and `composite_score` inside `score_detail` widened from non-null to nullable to reflect scorer null semantics. |
+| 2026-10-11 | `trip-aggregate.schema.json` | — | v1.0.0 | **New** | Introduced structured trip aggregate schema. Additive patch bump. Documents `hard_acceleration_count` as events with acceleration_ms2 at or above the configured threshold. |
 
 ### Null semantics in `score.schema.json` (v1.2.0)
 
@@ -61,6 +63,10 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 - `maintenance_score`: `null` when `health_status` is `insufficient_data`.
 - `composite_score`: **MUST be `null` unless BOTH `usage_score` and `maintenance_score` are non-null.** Producers and consumers must never silently fall back to a usage-only or maintenance-only blend.
 - Consumers (pricing-policy, notification-advisory, mobile-app) must handle `null` for all four fields before the producer starts emitting them.
+
+### Field semantics in `trip-aggregate.schema.json` (v1.0.0)
+
+- `hard_acceleration_count`: events with acceleration_ms2 at or above the configured threshold (e.g. `telematics.hard-acceleration-threshold-ms2`, default 3.0 m/s²). Required integer >= 0.
 
 ## Validation Integration
 
@@ -82,5 +88,6 @@ contracts/
     ├── dtc-reading.schema.json
     ├── score.schema.json
     ├── premium-request.schema.json
-    └── premium-response.schema.json
+    ├── premium-response.schema.json
+    └── trip-aggregate.schema.json
 ```

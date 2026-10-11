@@ -229,4 +229,91 @@ class SchemaValidationServiceTest {
                     "Event[" + i + "] for vehicle " + event.vehicleId() + " rejected by schema: " + errors);
         }
     }
+
+    // ── Trip Aggregate Schema & Synthetic Profiles Validation ───
+
+    @Test
+    @DisplayName("Every aggregate produced from SyntheticDataGenerator passes trip-aggregate.schema.json")
+    void allAggregatesPassTripAggregateSchema() {
+        SyntheticDataGenerator generator = new SyntheticDataGenerator();
+        java.util.List<com.paymu.telematics.model.UsageEvent> events = generator.generate();
+        AggregationService aggService = new AggregationService(5, 3.0);
+        com.paymu.telematics.model.AggregationResult result = aggService.processAndAggregate(events);
+
+        assertFalse(result.aggregates().isEmpty(), "Synthetic generator produced no aggregates");
+
+        for (int i = 0; i < result.aggregates().size(); i++) {
+            com.paymu.telematics.model.TripAggregate agg = result.aggregates().get(i);
+            com.fasterxml.jackson.databind.JsonNode node = mapper.valueToTree(agg);
+            Set<ValidationMessage> errors = validationService.validateTripAggregate(node);
+            assertTrue(errors.isEmpty(),
+                    "Aggregate[" + i + "] for vehicle " + agg.vehicleId() + " rejected by schema: " + errors);
+        }
+    }
+
+    @Test
+    @DisplayName("Synthetic vehicle profiles adhere to intended acceleration and braking thresholds")
+    void syntheticVehicleProfiles_meetExpectations() {
+        SyntheticDataGenerator generator = new SyntheticDataGenerator();
+        java.util.List<com.paymu.telematics.model.UsageEvent> events = generator.generate();
+        AggregationService aggService = new AggregationService(5, 3.0);
+        com.paymu.telematics.model.AggregationResult result = aggService.processAndAggregate(events);
+
+        // Map aggregates by vehicle ID
+        java.util.Map<String, java.util.List<com.paymu.telematics.model.TripAggregate>> aggsByVehicle =
+                result.aggregates().stream().collect(java.util.stream.Collectors.groupingBy(com.paymu.telematics.model.TripAggregate::vehicleId));
+
+        String v1 = SyntheticDataGenerator.VEHICLE_IDS[0]; // NORMAL
+        String v2 = SyntheticDataGenerator.VEHICLE_IDS[1]; // POOR
+        String v3 = SyntheticDataGenerator.VEHICLE_IDS[2]; // CONFLICTING
+        String v4 = SyntheticDataGenerator.VEHICLE_IDS[3]; // UNVERIFIED
+        String v5 = SyntheticDataGenerator.VEHICLE_IDS[4]; // INSUFFICIENT
+
+        // 1. NORMAL: careful driving, 0 harsh brakes, 0 hard accels, every accel < 2.0
+        java.util.List<com.paymu.telematics.model.TripAggregate> v1Aggs = aggsByVehicle.get(v1);
+        assertNotNull(v1Aggs);
+        assertEquals(12, v1Aggs.size());
+        double v1BrakeAvg = v1Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::harshBrakingCount).average().orElse(0);
+        double v1AccelAvg = v1Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::hardAccelerationCount).average().orElse(0);
+        assertEquals(0.0, v1BrakeAvg);
+        assertEquals(0.0, v1AccelAvg);
+        events.stream().filter(e -> e.vehicleId().equals(v1)).forEach(e -> {
+            assertFalse(e.brakingEvent());
+            assertTrue(e.accelerationMs2() < 2.0, "Vehicle 1 acceleration must be < 2.0: " + e.accelerationMs2());
+        });
+
+        // 2. POOR: both deductions fire (avg harsh brake > 0.5, avg hard accel > 0.5)
+        java.util.List<com.paymu.telematics.model.TripAggregate> v2Aggs = aggsByVehicle.get(v2);
+        assertNotNull(v2Aggs);
+        assertEquals(4, v2Aggs.size());
+        double v2BrakeAvg = v2Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::harshBrakingCount).average().orElse(0);
+        double v2AccelAvg = v2Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::hardAccelerationCount).average().orElse(0);
+        assertTrue(v2BrakeAvg > 0.5, "Vehicle 2 avg harsh brakes should be > 0.5, got: " + v2BrakeAvg);
+        assertTrue(v2AccelAvg > 0.5, "Vehicle 2 avg hard accels should be > 0.5, got: " + v2AccelAvg);
+
+        // 3. CONFLICTING: harsh braking only (avg harsh brake > 0.5, avg hard accel <= 0.5)
+        java.util.List<com.paymu.telematics.model.TripAggregate> v3Aggs = aggsByVehicle.get(v3);
+        assertNotNull(v3Aggs);
+        assertEquals(4, v3Aggs.size());
+        double v3BrakeAvg = v3Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::harshBrakingCount).average().orElse(0);
+        double v3AccelAvg = v3Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::hardAccelerationCount).average().orElse(0);
+        assertTrue(v3BrakeAvg > 0.5, "Vehicle 3 avg harsh brakes should be > 0.5, got: " + v3BrakeAvg);
+        assertEquals(0.0, v3AccelAvg, "Vehicle 3 avg hard accels should be 0.0, got: " + v3AccelAvg);
+
+        // 4. UNVERIFIED: careful driving, 0 harsh brakes, 0 hard accels, every accel < 2.0
+        java.util.List<com.paymu.telematics.model.TripAggregate> v4Aggs = aggsByVehicle.get(v4);
+        assertNotNull(v4Aggs);
+        assertEquals(6, v4Aggs.size());
+        double v4BrakeAvg = v4Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::harshBrakingCount).average().orElse(0);
+        double v4AccelAvg = v4Aggs.stream().mapToInt(com.paymu.telematics.model.TripAggregate::hardAccelerationCount).average().orElse(0);
+        assertEquals(0.0, v4BrakeAvg);
+        assertEquals(0.0, v4AccelAvg);
+        events.stream().filter(e -> e.vehicleId().equals(v4)).forEach(e -> {
+            assertFalse(e.brakingEvent());
+            assertTrue(e.accelerationMs2() < 2.0, "Vehicle 4 acceleration must be < 2.0: " + e.accelerationMs2());
+        });
+
+        // 5. INSUFFICIENT: no trips
+        assertNull(aggsByVehicle.get(v5));
+    }
 }

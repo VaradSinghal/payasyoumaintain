@@ -5,10 +5,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.Map;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * Global exception handler that returns structured JSON error responses.
@@ -31,6 +32,17 @@ public class GlobalExceptionHandler {
                 "error", "MALFORMED_REQUEST_BODY",
                 "message", "Request body is not valid JSON.",
                 "timestamp", Instant.now().toString()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String name = ex.getName();
+        String value = ex.getValue() != null ? ex.getValue().toString() : "null";
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("error", "INVALID_REQUEST");
+        body.put("message", "Invalid value '" + value + "' for parameter '" + name + "'.");
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.badRequest().body(body);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -17,6 +17,7 @@ telematics:
   # Time gap (in minutes) between consecutive events that triggers
   # automatic trip segmentation when trip_id is absent.
   trip-gap-minutes: 5
+  hard-acceleration-threshold-ms2: 3.0
 
 demo:
   seed-on-startup: ${DEMO_SEED_ON_STARTUP:false}

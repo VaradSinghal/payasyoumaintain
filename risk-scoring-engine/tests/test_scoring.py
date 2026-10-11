@@ -516,3 +516,89 @@ def test_api_schema_validation_with_null_usage():
     assert "usage_data_unavailable" in data["data_flags"]
 
 
+def test_missing_hard_acceleration_count_returns_422():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    req = {
+        "trip_aggregates": [{
+            "trip_id": "11111111-1111-1111-1111-111111111111",
+            "vehicle_id": "22222222-2222-2222-2222-222222222222",
+            "event_count": 50,
+            "avg_speed_kmh": 40.0,
+            "max_speed_kmh": 60.0,
+            "harsh_braking_count": 0,
+            # hard_acceleration_count omitted!
+            "distance_km": 10.0,
+            "trip_start": "2026-09-20T08:00:00Z",
+            "trip_end": "2026-09-20T08:30:00Z"
+        }]
+    }
+    resp = client.post("/score/22222222-2222-2222-2222-222222222222", json=req)
+    assert resp.status_code == 422
+    errors = resp.json()["detail"]
+    assert any("hard_acceleration_count" in str(err) for err in errors)
+
+
+def test_request_model_accepts_valid_contract_aggregate():
+    import json
+    import os
+    from jsonschema import validate
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    schema_path = os.path.join(os.path.dirname(__file__), '..', '..', 'contracts', 'schemas', 'trip-aggregate.schema.json')
+    with open(schema_path, 'r') as f:
+        aggregate_schema = json.load(f)
+
+    aggregate = {
+        "trip_id": "33333333-3333-3333-3333-333333333333",
+        "vehicle_id": "44444444-4444-4444-4444-444444444444",
+        "event_count": 100,
+        "avg_speed_kmh": 50.0,
+        "max_speed_kmh": 80.0,
+        "harsh_braking_count": 0,
+        "hard_acceleration_count": 0,
+        "distance_km": 15.5,
+        "trip_start": "2026-09-20T08:00:00Z",
+        "trip_end": "2026-09-20T08:30:00Z"
+    }
+    # First assert that the aggregate validates against the contract schema
+    validate(instance=aggregate, schema=aggregate_schema)
+
+    # Then assert the API request model accepts it
+    client = TestClient(app)
+    req = {
+        "trip_aggregates": [aggregate]
+    }
+    resp = client.post("/score/44444444-4444-4444-4444-444444444444", json=req)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["usage_score"] == 100.0
+
+
+def test_hard_acceleration_deductions_and_null_semantics():
+    vid = "v-hard-accel"
+    # 1. hard accel only: 100 - 10 = 90
+    trips_accel = make_trips(vid, n=2, harsh_braking=0, hard_accel=1)
+    s1 = generate_score(vid, ScoreRequest(trip_aggregates=trips_accel))
+    assert s1["usage_score"] == 90.0
+
+    # 2. both harsh braking and hard accel: 100 - 15 - 10 = 75
+    trips_both = make_trips(vid, n=2, harsh_braking=1, hard_accel=1)
+    s2 = generate_score(vid, ScoreRequest(trip_aggregates=trips_both))
+    assert s2["usage_score"] == 75.0
+
+    # 3. harsh braking only: 100 - 15 = 85
+    trips_brake = make_trips(vid, n=2, harsh_braking=1, hard_accel=0)
+    s3 = generate_score(vid, ScoreRequest(trip_aggregates=trips_brake))
+    assert s3["usage_score"] == 85.0
+
+    # 4. omitted trips -> usage null
+    s4 = generate_score(vid, ScoreRequest(trip_aggregates=None))
+    assert s4["usage_score"] is None
+    assert "usage_data_unavailable" in s4["data_flags"]
+
+
+

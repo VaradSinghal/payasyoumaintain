@@ -30,9 +30,18 @@ public class AggregationService {
     private static final double EARTH_RADIUS_KM = 6_371.0;
 
     private final long tripGapMinutes;
+    private final double hardAccelerationThresholdMs2;
 
-    public AggregationService(@Value("${telematics.trip-gap-minutes:5}") long tripGapMinutes) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AggregationService(
+            @Value("${telematics.trip-gap-minutes:5}") long tripGapMinutes,
+            @Value("${telematics.hard-acceleration-threshold-ms2:3.0}") double hardAccelerationThresholdMs2) {
         this.tripGapMinutes = tripGapMinutes;
+        this.hardAccelerationThresholdMs2 = hardAccelerationThresholdMs2;
+    }
+
+    public AggregationService(long tripGapMinutes) {
+        this(tripGapMinutes, 3.0);
     }
 
     /**
@@ -120,6 +129,7 @@ public class AggregationService {
         double totalSpeed = 0;
         double maxSpeed = 0;
         int harshBrakingCount = 0;
+        int hardAccelerationCount = 0;
         double totalDistanceKm = 0;
 
         for (int i = 0; i < sorted.size(); i++) {
@@ -129,6 +139,10 @@ public class AggregationService {
 
             if (e.brakingEvent()) {
                 harshBrakingCount++;
+            }
+
+            if (e.accelerationMs2() >= hardAccelerationThresholdMs2) {
+                hardAccelerationCount++;
             }
 
             if (i > 0) {
@@ -148,6 +162,7 @@ public class AggregationService {
                 round2(avgSpeed),
                 round2(maxSpeed),
                 harshBrakingCount,
+                hardAccelerationCount,
                 round2(totalDistanceKm),
                 sorted.getFirst().timestamp(),
                 sorted.getLast().timestamp());

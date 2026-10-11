@@ -55,7 +55,7 @@ class TripAggregate(BaseModel):
     avg_speed_kmh: float
     max_speed_kmh: float
     harsh_braking_count: int
-    hard_acceleration_count: Optional[int] = 0  # Added for future compatibility, defaults to 0
+    hard_acceleration_count: int
     distance_km: float
     trip_start: str
     trip_end: str

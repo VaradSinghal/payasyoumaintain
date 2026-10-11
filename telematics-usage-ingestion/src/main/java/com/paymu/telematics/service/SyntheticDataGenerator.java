@@ -140,6 +140,7 @@ public class SyntheticDataGenerator {
         double speed = minSpeed + rng.nextDouble() * (maxSpeed - minSpeed) * 0.3;
 
         boolean forcedHarshBrake = (brakingProbability > 0);
+        boolean forcedHardAccel = (extraAccel > 0);
 
         for (int i = 0; i < eventCount; i++) {
             Instant timestamp = startTime.plusSeconds(i * (2 + rng.nextInt(3)));
@@ -153,10 +154,13 @@ public class SyntheticDataGenerator {
             if (braking) {
                 acceleration = -(3.5 + rng.nextDouble() * 4.0); // harsh brake: <= -3.5 m/s²
                 forcedHarshBrake = false; // already triggered
+            } else if (forcedHardAccel && i == eventCount / 4) {
+                acceleration = 3.5 + rng.nextDouble() * 1.5; // guaranteed hard acceleration >= 3.5 m/s²
+                forcedHardAccel = false;
             } else if (extraAccel > 0) {
                 acceleration = 1.0 + rng.nextDouble() * extraAccel; // hard acceleration
             } else {
-                acceleration = -0.8 + rng.nextDouble() * 2.0; // normal acceleration
+                acceleration = -0.8 + rng.nextDouble() * 2.0; // normal acceleration (< 1.2, strictly < 2.0)
             }
 
             double distanceM = (speed / 3.6) * (2 + rng.nextInt(3));

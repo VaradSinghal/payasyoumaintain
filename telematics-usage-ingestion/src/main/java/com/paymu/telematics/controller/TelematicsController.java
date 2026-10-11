@@ -119,24 +119,18 @@ public class TelematicsController {
      * Retrieve all raw telematics events for a vehicle.
      */
     @GetMapping("/events/{vehicleId}")
-    public ResponseEntity<List<UsageEvent>> getEvents(@PathVariable String vehicleId) {
-        List<UsageEvent> events = eventStore.getEventsByVehicle(vehicleId);
-        if (events.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(events);
+    public ResponseEntity<List<UsageEvent>> getEvents(@PathVariable java.util.UUID vehicleId) {
+        List<UsageEvent> events = eventStore.getEventsByVehicle(vehicleId.toString());
+        return ResponseEntity.ok(events != null ? events : List.of());
     }
 
     /**
      * Retrieve trip aggregates for a vehicle.
      */
     @GetMapping("/aggregates/{vehicleId}")
-    public ResponseEntity<List<TripAggregate>> getAggregates(@PathVariable String vehicleId) {
-        List<TripAggregate> aggregates = eventStore.getAggregatesByVehicle(vehicleId);
-        if (aggregates.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(aggregates);
+    public ResponseEntity<List<TripAggregate>> getAggregates(@PathVariable java.util.UUID vehicleId) {
+        List<TripAggregate> aggregates = eventStore.getAggregatesByVehicle(vehicleId.toString());
+        return ResponseEntity.ok(aggregates != null ? aggregates : List.of());
     }
 
     /**

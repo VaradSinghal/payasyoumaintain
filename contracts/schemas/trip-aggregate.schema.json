@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/trip-aggregate/v1.0.0",
+  "title": "Trip Aggregate",
+  "description": "Computed aggregates for a single vehicle trip. Produced by telematics-usage-ingestion and consumed by risk-scoring-engine, pricing-policy, and notification-advisory.",
+  "type": "object",
+  "required": [
+    "trip_id",
+    "vehicle_id",
+    "event_count",
+    "avg_speed_kmh",
+    "max_speed_kmh",
+    "harsh_braking_count",
+    "hard_acceleration_count",
+    "distance_km",
+    "trip_start",
+    "trip_end"
+  ],
+  "properties": {
+    "trip_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the trip."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle that completed the trip."
+    },
+    "event_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of telematics events recorded in this trip."
+    },
+    "avg_speed_kmh": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Average speed across all events in kilometres per hour."
+    },
+    "max_speed_kmh": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Maximum speed recorded during the trip in kilometres per hour."
+    },
+    "harsh_braking_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of harsh braking events recorded during the trip."
+    },
+    "hard_acceleration_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of events with acceleration_ms2 at or above the configured threshold."
+    },
+    "distance_km": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total trip distance in kilometres computed from GPS trace."
+    },
+    "trip_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the first event in the trip."
+    },
+    "trip_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the last event in the trip."
+    }
+  },
+  "additionalProperties": false
+}

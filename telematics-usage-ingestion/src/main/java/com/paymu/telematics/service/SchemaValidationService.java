@@ -24,22 +24,36 @@ import java.util.Set;
 public class SchemaValidationService {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaValidationService.class);
-    private static final String SCHEMA_PATH = "/schemas/usage-event.schema.json";
+    private static final String USAGE_EVENT_SCHEMA_PATH = "/schemas/usage-event.schema.json";
+    private static final String TRIP_AGGREGATE_SCHEMA_PATH = "/schemas/trip-aggregate.schema.json";
 
     private final JsonSchema usageEventSchema;
+    private final JsonSchema tripAggregateSchema;
 
     public SchemaValidationService() {
         JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
-        try (InputStream is = getClass().getResourceAsStream(SCHEMA_PATH)) {
+        try (InputStream is = getClass().getResourceAsStream(USAGE_EVENT_SCHEMA_PATH)) {
             if (is == null) {
                 throw new IllegalStateException(
-                        "Contract schema not found on classpath: " + SCHEMA_PATH
+                        "Contract schema not found on classpath: " + USAGE_EVENT_SCHEMA_PATH
                                 + ". Ensure the maven-resources-plugin has run (mvn generate-resources).");
             }
             this.usageEventSchema = factory.getSchema(is);
-            log.info("Loaded usage-event contract schema from classpath: {}", SCHEMA_PATH);
+            log.info("Loaded usage-event contract schema from classpath: {}", USAGE_EVENT_SCHEMA_PATH);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to load contract schema", e);
+            throw new IllegalStateException("Failed to load usage-event contract schema", e);
+        }
+
+        try (InputStream is = getClass().getResourceAsStream(TRIP_AGGREGATE_SCHEMA_PATH)) {
+            if (is == null) {
+                throw new IllegalStateException(
+                        "Contract schema not found on classpath: " + TRIP_AGGREGATE_SCHEMA_PATH
+                                + ". Ensure the maven-resources-plugin has run (mvn generate-resources).");
+            }
+            this.tripAggregateSchema = factory.getSchema(is);
+            log.info("Loaded trip-aggregate contract schema from classpath: {}", TRIP_AGGREGATE_SCHEMA_PATH);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to load trip-aggregate contract schema", e);
         }
     }
 
@@ -51,5 +65,15 @@ public class SchemaValidationService {
      */
     public Set<ValidationMessage> validate(JsonNode event) {
         return usageEventSchema.validate(event);
+    }
+
+    /**
+     * Validates a single JSON trip aggregate node against the trip-aggregate schema.
+     *
+     * @param aggregate the raw JSON node to validate
+     * @return a set of validation messages; empty if the aggregate is valid
+     */
+    public Set<ValidationMessage> validateTripAggregate(JsonNode aggregate) {
+        return tripAggregateSchema.validate(aggregate);
     }
 }

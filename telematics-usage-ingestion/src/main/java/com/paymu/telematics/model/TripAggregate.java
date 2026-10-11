@@ -13,6 +13,7 @@ public record TripAggregate(
         @JsonProperty("avg_speed_kmh") double avgSpeedKmh,
         @JsonProperty("max_speed_kmh") double maxSpeedKmh,
         @JsonProperty("harsh_braking_count") int harshBrakingCount,
+        @JsonProperty("hard_acceleration_count") int hardAccelerationCount,
         @JsonProperty("distance_km") double distanceKm,
         @JsonProperty("trip_start") String tripStart,
         @JsonProperty("trip_end") String tripEnd

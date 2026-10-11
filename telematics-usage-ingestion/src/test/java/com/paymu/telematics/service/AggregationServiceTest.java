@@ -34,6 +34,11 @@ class AggregationServiceTest {
 
     private UsageEvent event(String tripId, String vehicleId, Instant ts,
                               double lat, double lon, double speed, boolean braking) {
+        return event(tripId, vehicleId, ts, lat, lon, speed, braking ? -5.0 : 0.5, braking);
+    }
+
+    private UsageEvent event(String tripId, String vehicleId, Instant ts,
+                              double lat, double lon, double speed, double accel, boolean braking) {
         return new UsageEvent(
                 UUID.randomUUID().toString(),
                 vehicleId,
@@ -41,7 +46,7 @@ class AggregationServiceTest {
                 ts.toString(),
                 new GpsCoordinates(lat, lon, null),
                 speed,
-                braking ? -5.0 : 0.5,
+                accel,
                 braking);
     }
 
@@ -110,6 +115,80 @@ class AggregationServiceTest {
 
             AggregationResult result = aggregationService.processAndAggregate(events);
             assertEquals(0, result.aggregates().getFirst().harshBrakingCount());
+        }
+    }
+
+    // ── Hard acceleration count ─────────────────────────────────
+
+    @Nested
+    @DisplayName("Hard acceleration count")
+    class HardAcceleration {
+
+        @Test
+        @DisplayName("Counts events where acceleration_ms2 is at or above default threshold (3.0)")
+        void countsAboveThreshold() {
+            String tripId = UUID.randomUUID().toString();
+            String vehicleId = UUID.randomUUID().toString();
+            Instant t = Instant.parse("2026-09-20T10:00:00Z");
+
+            List<UsageEvent> events = List.of(
+                    event(tripId, vehicleId, t, 12.97, 77.59, 50, 1.5, false),
+                    event(tripId, vehicleId, t.plusSeconds(3), 12.9701, 77.5901, 55, 3.2, false),
+                    event(tripId, vehicleId, t.plusSeconds(6), 12.9702, 77.5902, 60, 4.0, false),
+                    event(tripId, vehicleId, t.plusSeconds(9), 12.9703, 77.5903, 58, 2.9, false));
+
+            AggregationResult result = aggregationService.processAndAggregate(events);
+            TripAggregate agg = result.aggregates().getFirst();
+            assertEquals(2, agg.hardAccelerationCount());
+        }
+
+        @Test
+        @DisplayName("Counts event exactly at threshold (3.0)")
+        void countsExactlyAtThreshold() {
+            String tripId = UUID.randomUUID().toString();
+            String vehicleId = UUID.randomUUID().toString();
+            Instant t = Instant.parse("2026-09-20T10:00:00Z");
+
+            List<UsageEvent> events = List.of(
+                    event(tripId, vehicleId, t, 12.97, 77.59, 50, 3.0, false),
+                    event(tripId, vehicleId, t.plusSeconds(3), 12.9701, 77.5901, 52, 2.999, false));
+
+            AggregationResult result = aggregationService.processAndAggregate(events);
+            TripAggregate agg = result.aggregates().getFirst();
+            assertEquals(1, agg.hardAccelerationCount(), "3.0 should be counted, 2.999 should not");
+        }
+
+        @Test
+        @DisplayName("Returns zero when no acceleration reaches threshold")
+        void zeroHardAcceleration() {
+            String tripId = UUID.randomUUID().toString();
+            String vehicleId = UUID.randomUUID().toString();
+            Instant t = Instant.parse("2026-09-20T10:00:00Z");
+
+            List<UsageEvent> events = List.of(
+                    event(tripId, vehicleId, t, 12.97, 77.59, 50, 0.5, false),
+                    event(tripId, vehicleId, t.plusSeconds(3), 12.9701, 77.5901, 55, 1.8, false));
+
+            AggregationResult result = aggregationService.processAndAggregate(events);
+            TripAggregate agg = result.aggregates().getFirst();
+            assertEquals(0, agg.hardAccelerationCount());
+        }
+
+        @Test
+        @DisplayName("Custom threshold configured via constructor is respected")
+        void customThresholdRespected() {
+            AggregationService customService = new AggregationService(5, 2.5);
+            String tripId = UUID.randomUUID().toString();
+            String vehicleId = UUID.randomUUID().toString();
+            Instant t = Instant.parse("2026-09-20T10:00:00Z");
+
+            List<UsageEvent> events = List.of(
+                    event(tripId, vehicleId, t, 12.97, 77.59, 50, 2.5, false),
+                    event(tripId, vehicleId, t.plusSeconds(3), 12.9701, 77.5901, 55, 2.4, false));
+
+            AggregationResult result = customService.processAndAggregate(events);
+            TripAggregate agg = result.aggregates().getFirst();
+            assertEquals(1, agg.hardAccelerationCount());
         }
     }
 
