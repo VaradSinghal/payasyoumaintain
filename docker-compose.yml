@@ -220,6 +220,35 @@ services:
       retries: 8
       start_period: 45s
 
+  # ── Tier 4 — API Gateway (Public entrance for Web & Mobile) ──────────────
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      identity-consent:
+        condition: service_healthy
+      pricing-policy:
+        condition: service_healthy
+      claims-verification:
+        condition: service_healthy
+      notification-advisory:
+        condition: service_healthy
+      maintenance-vehicle-health-ingestion:
+        condition: service_healthy
+      telematics-usage-ingestion:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health | grep -q UP || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 volumes:
