@@ -8,6 +8,7 @@ spring:
     name: telematics-usage-ingestion
   jackson:
     property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
 
@@ -16,6 +17,9 @@ telematics:
   # Time gap (in minutes) between consecutive events that triggers
   # automatic trip segmentation when trip_id is absent.
   trip-gap-minutes: 5
+
+demo:
+  seed-on-startup: ${DEMO_SEED_ON_STARTUP:false}
 
 management:
   endpoints:

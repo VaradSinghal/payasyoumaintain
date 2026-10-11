@@ -1,5 +1,6 @@
 package com.paymu.telematics.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -10,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * {@link com.paymu.telematics.service.AggregationService} auto-segments
  * events into trips using a configurable time-gap threshold.</p>
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record UsageEvent(
         @JsonProperty("event_id") String eventId,
         @JsonProperty("vehicle_id") String vehicleId,

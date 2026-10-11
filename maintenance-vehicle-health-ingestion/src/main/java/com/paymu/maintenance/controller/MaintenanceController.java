@@ -187,6 +187,9 @@ public class MaintenanceController {
      */
     @PostMapping("/generate-synthetic")
     public ResponseEntity<BatchIngestResponse> generateSynthetic() {
+        // Idempotent: clear existing demo data before re-seeding
+        store.clearForVehicles(List.of(SyntheticDataGenerator.VEHICLE_IDS));
+
         List<MaintenanceEvent> syntheticEvents = syntheticDataGenerator.generate();
 
         // Run through normal ingest pipeline (eat our own dog food)

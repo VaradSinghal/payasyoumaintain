@@ -210,4 +210,23 @@ class SchemaValidationServiceTest {
         Set<ValidationMessage> errors = validationService.validate(event);
         assertFalse(errors.isEmpty(), "Expected error for missing gps.latitude");
     }
+
+    // ── Generator Full Output Validation ────────────────────────
+
+    @Test
+    @DisplayName("SyntheticDataGenerator's FULL output passes schema validation with zero rejections")
+    void generatorFullOutput_passesSchemaValidation() {
+        SyntheticDataGenerator generator = new SyntheticDataGenerator();
+        java.util.List<com.paymu.telematics.model.UsageEvent> events = generator.generate();
+
+        assertFalse(events.isEmpty(), "Synthetic generator produced no events");
+
+        for (int i = 0; i < events.size(); i++) {
+            com.paymu.telematics.model.UsageEvent event = events.get(i);
+            com.fasterxml.jackson.databind.JsonNode node = mapper.valueToTree(event);
+            Set<ValidationMessage> errors = validationService.validate(node);
+            assertTrue(errors.isEmpty(),
+                    "Event[" + i + "] for vehicle " + event.vehicleId() + " rejected by schema: " + errors);
+        }
+    }
 }

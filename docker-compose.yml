@@ -117,6 +117,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DEMO_SEED_ON_STARTUP: "true"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/api/v1/actuator/health | grep -q UP || exit 1"]
       interval: 15s
@@ -133,6 +134,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DEMO_SEED_ON_STARTUP: "true"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/api/v1/actuator/health | grep -q UP || exit 1"]
       interval: 15s

@@ -12,147 +12,162 @@ import java.util.Random;
 import java.util.UUID;
 
 /**
- * Generates realistic synthetic telematics data for five sample vehicles.
- * Designed to make the service demoable without real OBD-II hardware.
+ * Generates realistic synthetic telematics data for five distinct sample vehicles.
  *
- * <p>Each vehicle gets 2–3 trips with varying profiles:</p>
- * <ul>
- *   <li>Vehicles 1–2: City driving (30–60 km/h, frequent braking)</li>
- *   <li>Vehicles 3–4: Highway driving (80–120 km/h, rare braking)</li>
- *   <li>Vehicle 5:    Mixed (city → highway → city)</li>
- * </ul>
- *
- * <p>GPS traces simulate smooth paths originating near Bengaluru, India
- * (12.97°N, 77.59°E) with realistic positional drift consistent with
- * the reported speed.</p>
+ * <p>Profiles:</p>
+ * <ol>
+ *   <li><b>NORMAL</b> (a1b2c3d4...): ~12 trips in last 30 days, careful driving (0 harsh brakes).</li>
+ *   <li><b>POOR</b> (b2c3d4e5...): aggressive driving, harsh braking and hard acceleration.</li>
+ *   <li><b>CONFLICTING</b> (c3d4e5f6...): harsh braking deduction fires, hard acceleration doesn't.</li>
+ *   <li><b>UNVERIFIED</b> (d4e5f6a7...): careful driving, 0 harsh brakes.</li>
+ *   <li><b>INSUFFICIENT</b> (e5f6a7b8...): ZERO trips.</li>
+ * </ol>
  */
 @Service
 public class SyntheticDataGenerator {
 
-    // Five fixed vehicle IDs for deterministic demos
-    static final String[] VEHICLE_IDS = {
-            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-            "c3d4e5f6-a7b8-9012-cdef-123456789012",
-            "d4e5f6a7-b8c9-0123-defa-234567890123",
-            "e5f6a7b8-c9d0-1234-efab-345678901234"
+    public static final String[] VEHICLE_IDS = {
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890", // NORMAL
+            "b2c3d4e5-f6a7-8901-bcde-f12345678901", // POOR
+            "c3d4e5f6-a7b8-9012-cdef-123456789012", // CONFLICTING
+            "d4e5f6a7-b8c9-0123-defa-234567890123", // UNVERIFIED
+            "e5f6a7b8-c9d0-1234-efab-345678901234"  // INSUFFICIENT
     };
 
     // Starting coordinates (Bengaluru area)
     private static final double BASE_LAT = 12.9716;
     private static final double BASE_LON = 77.5946;
 
-    // Approximate metres-per-degree at this latitude
     private static final double METRES_PER_DEG_LAT = 111_320.0;
     private static final double METRES_PER_DEG_LON = 111_320.0 * Math.cos(Math.toRadians(BASE_LAT));
 
-    private final Random rng = new Random(42); // deterministic seed for reproducibility
+    private final Random rng = new Random(42);
 
     /**
-     * Generates all synthetic events for 5 vehicles.
-     *
-     * @return a flat list of usage events (no trip_id set — lets the
-     * aggregation service exercise its auto-segmentation logic)
+     * Generates all synthetic events for the 5 demo vehicles.
      */
     public List<UsageEvent> generate() {
-        Instant baseTime = Instant.now().minus(1, ChronoUnit.DAYS);
+        Instant now = Instant.now();
         List<UsageEvent> allEvents = new ArrayList<>();
 
-        for (int v = 0; v < VEHICLE_IDS.length; v++) {
-            String vehicleId = VEHICLE_IDS[v];
-            double startLat = BASE_LAT + (v * 0.01);  // slightly different start per vehicle
-            double startLon = BASE_LON + (v * 0.008);
-            Instant vehicleTime = baseTime.plus(v * 10L, ChronoUnit.MINUTES);
+        // 1. NORMAL: ~12 trips in the last 30 days, careful driving
+        allEvents.addAll(generateNormalTrips(VEHICLE_IDS[0], now));
 
-            switch (v) {
-                case 0, 1 -> allEvents.addAll(generateCityTrips(vehicleId, vehicleTime, startLat, startLon));
-                case 2, 3 -> allEvents.addAll(generateHighwayTrips(vehicleId, vehicleTime, startLat, startLon));
-                case 4 -> allEvents.addAll(generateMixedTrips(vehicleId, vehicleTime, startLat, startLon));
-                default -> throw new IllegalStateException();
-            }
-        }
+        // 2. POOR: aggressive driving, harsh braking fires
+        allEvents.addAll(generatePoorTrips(VEHICLE_IDS[1], now));
+
+        // 3. CONFLICTING: harsh-braking fires (>0.5), hard acceleration doesn't
+        allEvents.addAll(generateConflictingTrips(VEHICLE_IDS[2], now));
+
+        // 4. UNVERIFIED: careful driving
+        allEvents.addAll(generateUnverifiedTrips(VEHICLE_IDS[3], now));
+
+        // 5. INSUFFICIENT: ZERO trips
+        // (no events added for VEHICLE_IDS[4])
 
         return allEvents;
     }
 
-    // ── City driving: 2 trips, 30–60 km/h, ~15% braking rate ───
-
-    private List<UsageEvent> generateCityTrips(String vehicleId, Instant start,
-                                                double lat, double lon) {
+    // ── 1. NORMAL: 12 trips in last 30 days, careful driving ──────────────
+    private List<UsageEvent> generateNormalTrips(String vehicleId, Instant now) {
         List<UsageEvent> events = new ArrayList<>();
-        // Morning commute
-        events.addAll(generateTrip(vehicleId, start, lat, lon,
-                30, 60, 25, 40, 0.15, 0.3));
-        // Evening commute — 8 hours later (big gap → auto-segments into new trip)
-        events.addAll(generateTrip(vehicleId, start.plus(8, ChronoUnit.HOURS),
-                lat + 0.02, lon + 0.015, 30, 60, 20, 35, 0.18, -0.2));
+        for (int i = 0; i < 12; i++) {
+            Instant tripStart = now.minus(28 - (i * 2), ChronoUnit.DAYS).minus(i * 3, ChronoUnit.HOURS);
+            String tripId = UUID.randomUUID().toString();
+            events.addAll(generateTrip(tripId, vehicleId, tripStart,
+                    BASE_LAT + (i * 0.002), BASE_LON + (i * 0.002),
+                    35, 65, 12, 16, 0.0, 0.0, 0.4));
+        }
         return events;
     }
 
-    // ── Highway driving: 2 trips, 80–120 km/h, ~3% braking rate ─
-
-    private List<UsageEvent> generateHighwayTrips(String vehicleId, Instant start,
-                                                   double lat, double lon) {
+    // ── 2. POOR: 4 trips in last 10 days, aggressive driving ──────────────
+    private List<UsageEvent> generatePoorTrips(String vehicleId, Instant now) {
         List<UsageEvent> events = new ArrayList<>();
-        events.addAll(generateTrip(vehicleId, start, lat, lon,
-                80, 120, 40, 60, 0.03, 0.8));
-        events.addAll(generateTrip(vehicleId, start.plus(6, ChronoUnit.HOURS),
-                lat + 0.05, lon + 0.04, 80, 120, 35, 55, 0.04, -0.7));
+        for (int i = 0; i < 4; i++) {
+            Instant tripStart = now.minus(8 - (i * 2), ChronoUnit.DAYS).minus(i * 2, ChronoUnit.HOURS);
+            String tripId = UUID.randomUUID().toString();
+            // High braking probability with guaranteed harsh brakes and aggressive acceleration
+            events.addAll(generateTrip(tripId, vehicleId, tripStart,
+                    BASE_LAT + 0.02 + (i * 0.003), BASE_LON + 0.02,
+                    45, 95, 15, 20, 0.35, 4.0, 0.8));
+        }
         return events;
     }
 
-    // ── Mixed: 3 trips — city, highway, city ────────────────────
-
-    private List<UsageEvent> generateMixedTrips(String vehicleId, Instant start,
-                                                 double lat, double lon) {
+    // ── 3. CONFLICTING: 4 trips, harsh braking fires (>0.5), no hard accel ─
+    private List<UsageEvent> generateConflictingTrips(String vehicleId, Instant now) {
         List<UsageEvent> events = new ArrayList<>();
-        events.addAll(generateTrip(vehicleId, start, lat, lon,
-                30, 55, 15, 25, 0.12, 0.2));
-        events.addAll(generateTrip(vehicleId, start.plus(3, ChronoUnit.HOURS),
-                lat + 0.01, lon + 0.01, 85, 115, 30, 50, 0.04, 0.6));
-        events.addAll(generateTrip(vehicleId, start.plus(10, ChronoUnit.HOURS),
-                lat + 0.03, lon - 0.01, 25, 50, 15, 30, 0.20, -0.3));
+        for (int i = 0; i < 4; i++) {
+            Instant tripStart = now.minus(12 - (i * 3), ChronoUnit.DAYS).minus(i * 4, ChronoUnit.HOURS);
+            String tripId = UUID.randomUUID().toString();
+            // 3 of 4 trips have harsh braking (frequency = 0.75 > 0.5), normal acceleration
+            double brakeProb = (i < 3) ? 0.25 : 0.0;
+            events.addAll(generateTrip(tripId, vehicleId, tripStart,
+                    BASE_LAT + 0.03 + (i * 0.002), BASE_LON + 0.03,
+                    30, 60, 12, 16, brakeProb, 0.0, 0.2));
+        }
         return events;
     }
 
-    // ── Core trip generator ─────────────────────────────────────
+    // ── 4. UNVERIFIED: 6 trips, careful driving ───────────────────────────
+    private List<UsageEvent> generateUnverifiedTrips(String vehicleId, Instant now) {
+        List<UsageEvent> events = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            Instant tripStart = now.minus(18 - (i * 3), ChronoUnit.DAYS).minus(i * 3, ChronoUnit.HOURS);
+            String tripId = UUID.randomUUID().toString();
+            events.addAll(generateTrip(tripId, vehicleId, tripStart,
+                    BASE_LAT + 0.04 + (i * 0.002), BASE_LON + 0.04,
+                    35, 60, 12, 15, 0.0, 0.0, -0.3));
+        }
+        return events;
+    }
 
-    private List<UsageEvent> generateTrip(String vehicleId, Instant startTime,
-                                           double startLat, double startLon,
-                                           double minSpeed, double maxSpeed,
-                                           int minEvents, int maxEvents,
-                                           double brakingProbability,
-                                           double bearingRadians) {
+    // ── Core trip generator ───────────────────────────────────────────────
+
+    private List<UsageEvent> generateTrip(String tripId, String vehicleId, Instant startTime,
+                                          double startLat, double startLon,
+                                          double minSpeed, double maxSpeed,
+                                          int minEvents, int maxEvents,
+                                          double brakingProbability,
+                                          double extraAccel,
+                                          double bearingRadians) {
         int eventCount = minEvents + rng.nextInt(maxEvents - minEvents + 1);
         List<UsageEvent> events = new ArrayList<>(eventCount);
 
         double lat = startLat;
         double lon = startLon;
-        double speed = minSpeed + rng.nextDouble() * (maxSpeed - minSpeed) * 0.3; // start slow-ish
+        double speed = minSpeed + rng.nextDouble() * (maxSpeed - minSpeed) * 0.3;
+
+        boolean forcedHarshBrake = (brakingProbability > 0);
 
         for (int i = 0; i < eventCount; i++) {
-            Instant timestamp = startTime.plusSeconds(i * (2 + rng.nextInt(3))); // 2–4s between points
+            Instant timestamp = startTime.plusSeconds(i * (2 + rng.nextInt(3)));
 
-            // Smooth speed changes
             double targetSpeed = minSpeed + rng.nextDouble() * (maxSpeed - minSpeed);
-            speed += (targetSpeed - speed) * 0.2; // ease toward target
+            speed += (targetSpeed - speed) * 0.2;
             speed = Math.max(minSpeed * 0.5, Math.min(maxSpeed * 1.1, speed));
 
-            boolean braking = rng.nextDouble() < brakingProbability;
-            double acceleration = braking
-                    ? -(3.0 + rng.nextDouble() * 5.0) // harsh brake: -3 to -8 m/s²
-                    : -1.0 + rng.nextDouble() * 3.0;   // normal: -1 to +2 m/s²
+            boolean braking = (rng.nextDouble() < brakingProbability) || (forcedHarshBrake && i == eventCount / 2);
+            double acceleration;
+            if (braking) {
+                acceleration = -(3.5 + rng.nextDouble() * 4.0); // harsh brake: <= -3.5 m/s²
+                forcedHarshBrake = false; // already triggered
+            } else if (extraAccel > 0) {
+                acceleration = 1.0 + rng.nextDouble() * extraAccel; // hard acceleration
+            } else {
+                acceleration = -0.8 + rng.nextDouble() * 2.0; // normal acceleration
+            }
 
-            // Move GPS position consistent with speed
-            double distanceM = (speed / 3.6) * (2 + rng.nextInt(3)); // metres this interval
-            double jitter = (rng.nextDouble() - 0.5) * 0.3; // slight direction variance
+            double distanceM = (speed / 3.6) * (2 + rng.nextInt(3));
+            double jitter = (rng.nextDouble() - 0.5) * 0.3;
             lat += (distanceM * Math.cos(bearingRadians + jitter)) / METRES_PER_DEG_LAT;
             lon += (distanceM * Math.sin(bearingRadians + jitter)) / METRES_PER_DEG_LON;
 
             events.add(new UsageEvent(
                     UUID.randomUUID().toString(),
                     vehicleId,
-                    null, // trip_id intentionally null → exercises auto-segmentation
+                    tripId, // explicit trip_id
                     timestamp.toString(),
                     new GpsCoordinates(round6(lat), round6(lon), null),
                     round2(speed),

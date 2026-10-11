@@ -57,7 +57,7 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk())
@@ -80,7 +80,7 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk())
@@ -101,12 +101,12 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/dtc-readings/{id}/latest", "a1b2c3d4-e5f6-7890-abcd-ef1234567890"))
+        mockMvc.perform(get("/dtc-readings/{id}/latest", "a1b2c3d4-e5f6-7890-abcd-ef1234567890"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.confirmed_codes.length()").value(0))
                 .andExpect(jsonPath("$.pending_codes.length()").value(0));
@@ -125,7 +125,7 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isBadRequest())
@@ -146,7 +146,7 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(obdFails))
                 .andExpect(status().isBadRequest());
@@ -163,7 +163,7 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(manualFails))
                 .andExpect(status().isBadRequest());
@@ -173,10 +173,10 @@ class DtcControllerTest {
     void shouldReturnEmptyForEmptyHistoryAndLatest() throws Exception {
         String vehicleId = "unknown-vehicle";
 
-        mockMvc.perform(get("/api/v1/dtc-readings/{id}/latest", vehicleId))
+        mockMvc.perform(get("/dtc-readings/{id}/latest", vehicleId))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/v1/dtc-readings/{id}/history", vehicleId))
+        mockMvc.perform(get("/dtc-readings/{id}/history", vehicleId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
@@ -207,24 +207,24 @@ class DtcControllerTest {
                 }
                 """;
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload1))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/dtc-readings")
+        mockMvc.perform(post("/dtc-readings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload2))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/dtc-readings/{id}/history", vehicleId))
+        mockMvc.perform(get("/dtc-readings/{id}/history", vehicleId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].confirmed_codes.length()").value(2)) // latest first
                 .andExpect(jsonPath("$[0].pending_codes.length()").value(1))
                 .andExpect(jsonPath("$[1].confirmed_codes.length()").value(1));
 
-        mockMvc.perform(get("/api/v1/dtc-readings/{id}/latest", vehicleId))
+        mockMvc.perform(get("/dtc-readings/{id}/latest", vehicleId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("manual_entry"));
     }

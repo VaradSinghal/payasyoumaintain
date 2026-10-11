@@ -85,6 +85,15 @@ public class MaintenanceStore {
     }
 
     /**
+     * Clears stored events for specific vehicle IDs. Enables idempotent seeding.
+     */
+    public void clearForVehicles(Collection<String> vehicleIds) {
+        for (String id : vehicleIds) {
+            eventsByVehicle.remove(id);
+        }
+    }
+
+    /**
      * Clears all stored data. Useful for tests.
      */
     public void clear() {

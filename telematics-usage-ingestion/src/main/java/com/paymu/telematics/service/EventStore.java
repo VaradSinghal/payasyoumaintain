@@ -63,6 +63,16 @@ public class EventStore {
     }
 
     /**
+     * Clears stored data for specific vehicles. Enables idempotent seeding.
+     */
+    public void clearForVehicles(Collection<String> vehicleIds) {
+        for (String id : vehicleIds) {
+            eventsByVehicle.remove(id);
+            aggregatesByVehicle.remove(id);
+        }
+    }
+
+    /**
      * Clears all stored data. Useful for tests.
      */
     public void clear() {

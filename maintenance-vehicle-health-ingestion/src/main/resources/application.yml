@@ -11,6 +11,9 @@ spring:
     serialization:
       write-dates-as-timestamps: false
 
+demo:
+  seed-on-startup: ${DEMO_SEED_ON_STARTUP:false}
+
 management:
   endpoints:
     web:

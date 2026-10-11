@@ -145,6 +145,9 @@ public class TelematicsController {
      */
     @PostMapping("/generate-synthetic")
     public ResponseEntity<BatchIngestResponse> generateSynthetic() {
+        // Idempotent: clear existing demo data before re-seeding
+        eventStore.clearForVehicles(List.of(SyntheticDataGenerator.VEHICLE_IDS));
+
         List<UsageEvent> syntheticEvents = syntheticDataGenerator.generate();
 
         // Convert to JsonNode for schema validation (eat our own dog food)
