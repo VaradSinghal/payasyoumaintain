@@ -208,13 +208,15 @@ def main():
             err_msgs.append(f"{demo_id} timeline empty (status {st_tl})")
     add_result("Aggregates and timeline non-empty for first 4 vehicles", first_four_ok, "; ".join(err_msgs) if err_msgs else None)
 
-    # Aggregates and timeline empty for e5f6...
+    # Aggregates and timeline empty for e5f6... (200 with empty data)
     st_agg5, b_agg5 = request(f"{telematics_url}/aggregates/{v5}")
-    agg5_empty = (st_agg5 in [200, 404]) and (b_agg5 == [] or b_agg5 is None)
+    assert_status("telematics GET /aggregates/e5f6... -> 200", st_agg5, 200, b_agg5)
+    add_result("e5f6... aggregates is empty list []", b_agg5 == [], f"Expected [], got {b_agg5}")
+
     st_tl5, b_tl5 = request(f"{maintenance_url}/timeline/{v5}")
-    events5 = b_tl5.get("events", []) if isinstance(b_tl5, dict) else []
-    tl5_empty = (st_tl5 in [200, 404]) and (len(events5) == 0)
-    add_result("Aggregates and timeline empty for e5f6...", agg5_empty and tl5_empty, f"Aggregates: {b_agg5}, Timeline events: {events5}")
+    assert_status("maintenance GET /timeline/e5f6... -> 200", st_tl5, 200, b_tl5)
+    tl5_ok = isinstance(b_tl5, dict) and b_tl5.get("total_services") == 0 and b_tl5.get("events") == []
+    add_result("e5f6... timeline total_services 0 and events []", tl5_ok, f"Expected total_services 0 and events [], got {b_tl5}")
 
     # 10. Multiplier checks: a1b2... < 1.0 and b2c3... > 1.0
     st_q1, b_q1 = request(f"{pricing_url}/quote/{v1}", method="POST")
@@ -225,18 +227,70 @@ def main():
     mult_2 = b_q2.get("dynamic_multiplier") if isinstance(b_q2, dict) else None
     add_result("b2c3... multiplier > 1.0", mult_2 is not None and mult_2 > 1.0, f"Expected > 1.0, got {mult_2}")
 
-    # 11. e5f6... composite is null
+    # 11. Exact usage_score per story
+    # v1 (NORMAL): 100.0
+    u1 = b_q1.get("score_detail", {}).get("usage_score") if isinstance(b_q1, dict) else None
+    add_result("v1 (NORMAL) usage_score == 100.0", u1 == 100.0, f"Expected 100.0, got {u1}")
+
+    # v2 (POOR): 75.0
+    u2 = b_q2.get("score_detail", {}).get("usage_score") if isinstance(b_q2, dict) else None
+    add_result("v2 (POOR) usage_score == 75.0", u2 == 75.0, f"Expected 75.0, got {u2}")
+
+    # v3 (CONFLICTING): 85.0
+    st_q3, b_q3 = request(f"{pricing_url}/quote/{v3}", method="POST")
+    u3 = b_q3.get("score_detail", {}).get("usage_score") if isinstance(b_q3, dict) else None
+    add_result("v3 (CONFLICTING) usage_score == 85.0", u3 == 85.0, f"Expected 85.0, got {u3}")
+
+    # v4 (UNVERIFIED): 100.0
+    st_q4, b_q4 = request(f"{pricing_url}/quote/{v4}", method="POST")
+    u4 = b_q4.get("score_detail", {}).get("usage_score") if isinstance(b_q4, dict) else None
+    add_result("v4 (UNVERIFIED) usage_score == 100.0", u4 == 100.0, f"Expected 100.0, got {u4}")
+
+    # v5 (INSUFFICIENT): None
     st_q5, b_q5 = request(f"{pricing_url}/quote/{v5}", method="POST")
     score_det5 = b_q5.get("score_detail", {}) if isinstance(b_q5, dict) else {}
+    u5 = score_det5.get("usage_score")
+    add_result("v5 (INSUFFICIENT) usage_score is None", u5 is None, f"Expected None, got {u5}")
     comp5 = score_det5.get("composite_score")
     add_result("e5f6... composite is null", comp5 is None, f"Expected None, got {comp5}")
 
-    # 12. b2c3... has_open_recall is true
+    # 12. Advisory types per story
+    # v1 (NORMAL): SAFE_DRIVING_COMMENDATION
+    st_a1, b_a1 = request(f"{advisory_url}/advisories/{v1}")
+    types1 = [a.get("advisory_type") for a in b_a1.get("advisories", [])] if isinstance(b_a1, dict) else []
+    add_result("v1 advisories == ['SAFE_DRIVING_COMMENDATION']", types1 == ["SAFE_DRIVING_COMMENDATION"], f"Expected ['SAFE_DRIVING_COMMENDATION'], got {types1}")
+
+    # v2 (POOR): OPEN_RECALL + OVERDUE_SERVICE + LOW_RISK_SCORE
+    st_a2, b_a2 = request(f"{advisory_url}/advisories/{v2}")
+    types2 = [a.get("advisory_type") for a in b_a2.get("advisories", [])] if isinstance(b_a2, dict) else []
+    expected_types2 = ["OPEN_RECALL", "OVERDUE_SERVICE", "LOW_RISK_SCORE"]
+    add_result("v2 advisories == ['OPEN_RECALL', 'OVERDUE_SERVICE', 'LOW_RISK_SCORE']", types2 == expected_types2, f"Expected {expected_types2}, got {types2}")
+
+    # v3 (CONFLICTING): SAFE_DRIVING_COMMENDATION
+    st_a3, b_a3 = request(f"{advisory_url}/advisories/{v3}")
+    types3 = [a.get("advisory_type") for a in b_a3.get("advisories", [])] if isinstance(b_a3, dict) else []
+    add_result("v3 advisories == ['SAFE_DRIVING_COMMENDATION']", types3 == ["SAFE_DRIVING_COMMENDATION"], f"Expected ['SAFE_DRIVING_COMMENDATION'], got {types3}")
+
+    # v4 (UNVERIFIED): SAFE_DRIVING_COMMENDATION
+    st_a4, b_a4 = request(f"{advisory_url}/advisories/{v4}")
+    types4 = [a.get("advisory_type") for a in b_a4.get("advisories", [])] if isinstance(b_a4, dict) else []
+    add_result("v4 advisories == ['SAFE_DRIVING_COMMENDATION']", types4 == ["SAFE_DRIVING_COMMENDATION"], f"Expected ['SAFE_DRIVING_COMMENDATION'], got {types4}")
+
+    # v5 (INSUFFICIENT): NO_SERVICE_RECORD
+    st_a5, b_a5 = request(f"{advisory_url}/advisories/{v5}")
+    types5 = [a.get("advisory_type") for a in b_a5.get("advisories", [])] if isinstance(b_a5, dict) else []
+    add_result("v5 advisories == ['NO_SERVICE_RECORD']", types5 == ["NO_SERVICE_RECORD"], f"Expected ['NO_SERVICE_RECORD'], got {types5}")
+
+    # 13. d4e5... base_premium 11,700
+    base_prem4 = b_q4.get("base_premium") if isinstance(b_q4, dict) else None
+    add_result("d4e5... base_premium == 11,700", base_prem4 == 11700.0, f"Expected 11700.0, got {base_prem4}")
+
+    # 14. b2c3... has_open_recall is true
     score_det2 = b_q2.get("score_detail", {}) if isinstance(b_q2, dict) else {}
     recall2 = score_det2.get("has_open_recall")
     add_result("b2c3... has_open_recall is true", recall2 is True, f"Expected True, got {recall2}")
 
-    # 13. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
+    # 15. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
     fnol_upper = {
         "vehicle_id": v1,
         "policy_id": policy_id,
@@ -257,12 +311,25 @@ def main():
     st_fnol_b, b_fnol_b = request(f"{claims_url}/fnol", method="POST", data=fnol_bogus)
     assert_status("FNOL with bogus -> 400", st_fnol_b, 400, b_fnol_b)
 
-    # 14. identity-consent checks: unknown vehicle -> 404, not-a-uuid -> 400
+    # 16. identity-consent checks: unknown vehicle -> 404, not-a-uuid -> 400
     st_unk, b_unk = request(f"{identity_url}/vehicles/{uuid.uuid4()}")
     assert_status("identity-consent unknown vehicle -> 404", st_unk, 404, b_unk)
 
     st_bad, b_bad = request(f"{identity_url}/vehicles/not-a-uuid")
     assert_status("identity-consent not-a-uuid -> 400", st_bad, 400, b_bad)
+
+    # 17. 400 for malformed ids on pricing, notification, maintenance timeline, and telematics aggregates
+    st_mp, b_mp = request(f"{pricing_url}/quote/not-a-uuid", method="POST")
+    assert_status("pricing POST /quote/not-a-uuid -> 400", st_mp, 400, b_mp)
+
+    st_ma, b_ma = request(f"{advisory_url}/advisories/not-a-uuid")
+    assert_status("notification GET /advisories/not-a-uuid -> 400", st_ma, 400, b_ma)
+
+    st_mt, b_mt = request(f"{maintenance_url}/timeline/not-a-uuid")
+    assert_status("maintenance GET /timeline/not-a-uuid -> 400", st_mt, 400, b_mt)
+
+    st_magg, b_magg = request(f"{telematics_url}/aggregates/not-a-uuid")
+    assert_status("telematics GET /aggregates/not-a-uuid -> 400", st_magg, 400, b_magg)
 
     summarize_and_exit()
 
