@@ -54,6 +54,7 @@ def main():
     advisory_url = os.environ.get('ADVISORY_URL', 'http://localhost:8087/api/v1')
     maintenance_url = os.environ.get('MAINTENANCE_URL', 'http://localhost:8083/api/v1')
     claims_url = os.environ.get('CLAIMS_URL', 'http://localhost:8086/api/v1')
+    telematics_url = os.environ.get('TELEMATICS_URL', 'http://localhost:8082/api/v1')
 
     print("--- Running E2E Smoke Test ---")
     
@@ -184,6 +185,84 @@ def main():
             add_result("GET claim", False, "No claim_id returned from FNOL")
     else:
         add_result("GET claim", False, "Invalid FNOL response body")
+
+    # 9. Synthetic data seeding assertions
+    v1 = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    v2 = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+    v3 = "c3d4e5f6-a7b8-9012-cdef-123456789012"
+    v4 = "d4e5f6a7-b8c9-0123-defa-234567890123"
+    v5 = "e5f6a7b8-c9d0-1234-efab-345678901234"
+
+    # Aggregates and timeline non-empty for first 4 vehicles
+    first_four_ok = True
+    err_msgs = []
+    for demo_id in [v1, v2, v3, v4]:
+        st_agg, b_agg = request(f"{telematics_url}/aggregates/{demo_id}")
+        if st_agg != 200 or not isinstance(b_agg, list) or len(b_agg) == 0:
+            first_four_ok = False
+            err_msgs.append(f"{demo_id} aggregates empty (status {st_agg})")
+        st_tl, b_tl = request(f"{maintenance_url}/timeline/{demo_id}")
+        events = b_tl.get("events", []) if isinstance(b_tl, dict) else []
+        if st_tl != 200 or len(events) == 0:
+            first_four_ok = False
+            err_msgs.append(f"{demo_id} timeline empty (status {st_tl})")
+    add_result("Aggregates and timeline non-empty for first 4 vehicles", first_four_ok, "; ".join(err_msgs) if err_msgs else None)
+
+    # Aggregates and timeline empty for e5f6...
+    st_agg5, b_agg5 = request(f"{telematics_url}/aggregates/{v5}")
+    agg5_empty = (st_agg5 in [200, 404]) and (b_agg5 == [] or b_agg5 is None)
+    st_tl5, b_tl5 = request(f"{maintenance_url}/timeline/{v5}")
+    events5 = b_tl5.get("events", []) if isinstance(b_tl5, dict) else []
+    tl5_empty = (st_tl5 in [200, 404]) and (len(events5) == 0)
+    add_result("Aggregates and timeline empty for e5f6...", agg5_empty and tl5_empty, f"Aggregates: {b_agg5}, Timeline events: {events5}")
+
+    # 10. Multiplier checks: a1b2... < 1.0 and b2c3... > 1.0
+    st_q1, b_q1 = request(f"{pricing_url}/quote/{v1}", method="POST")
+    mult_1 = b_q1.get("dynamic_multiplier") if isinstance(b_q1, dict) else None
+    add_result("a1b2... multiplier < 1.0", mult_1 is not None and mult_1 < 1.0, f"Expected < 1.0, got {mult_1}")
+
+    st_q2, b_q2 = request(f"{pricing_url}/quote/{v2}", method="POST")
+    mult_2 = b_q2.get("dynamic_multiplier") if isinstance(b_q2, dict) else None
+    add_result("b2c3... multiplier > 1.0", mult_2 is not None and mult_2 > 1.0, f"Expected > 1.0, got {mult_2}")
+
+    # 11. e5f6... composite is null
+    st_q5, b_q5 = request(f"{pricing_url}/quote/{v5}", method="POST")
+    score_det5 = b_q5.get("score_detail", {}) if isinstance(b_q5, dict) else {}
+    comp5 = score_det5.get("composite_score")
+    add_result("e5f6... composite is null", comp5 is None, f"Expected None, got {comp5}")
+
+    # 12. b2c3... has_open_recall is true
+    score_det2 = b_q2.get("score_detail", {}) if isinstance(b_q2, dict) else {}
+    recall2 = score_det2.get("has_open_recall")
+    add_result("b2c3... has_open_recall is true", recall2 is True, f"Expected True, got {recall2}")
+
+    # 13. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
+    fnol_upper = {
+        "vehicle_id": v1,
+        "policy_id": policy_id,
+        "incident_date": "2026-10-08",
+        "incident_description": "Engine died",
+        "claimed_cause": "MECHANICAL_FAILURE"
+    }
+    st_fnol_u, b_fnol_u = request(f"{claims_url}/fnol", method="POST", data=fnol_upper)
+    assert_status("FNOL with MECHANICAL_FAILURE -> 400", st_fnol_u, 400, b_fnol_u)
+
+    fnol_bogus = {
+        "vehicle_id": v1,
+        "policy_id": policy_id,
+        "incident_date": "2026-10-08",
+        "incident_description": "Engine died",
+        "claimed_cause": "bogus"
+    }
+    st_fnol_b, b_fnol_b = request(f"{claims_url}/fnol", method="POST", data=fnol_bogus)
+    assert_status("FNOL with bogus -> 400", st_fnol_b, 400, b_fnol_b)
+
+    # 14. identity-consent checks: unknown vehicle -> 404, not-a-uuid -> 400
+    st_unk, b_unk = request(f"{identity_url}/vehicles/{uuid.uuid4()}")
+    assert_status("identity-consent unknown vehicle -> 404", st_unk, 404, b_unk)
+
+    st_bad, b_bad = request(f"{identity_url}/vehicles/not-a-uuid")
+    assert_status("identity-consent not-a-uuid -> 400", st_bad, 400, b_bad)
 
     summarize_and_exit()
 
