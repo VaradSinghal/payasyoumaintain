@@ -7,7 +7,7 @@ import java.util.List;
 public record ScoreResponse(
         @JsonProperty("score_id") String scoreId,
         @JsonProperty("vehicle_id") String vehicleId,
-        @JsonProperty("usage_score") double usageScore,
+        @JsonProperty("usage_score") Double usageScore,
         @JsonProperty("maintenance_score") Double maintenanceScore,
         @JsonProperty("composite_score") Double compositeScore,
         @JsonProperty("computed_at") String computedAt,

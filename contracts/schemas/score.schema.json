@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/score/v1.1.0",
+  "$id": "https://payasyoumaintain.com/schemas/score/v1.2.0",
   "title": "Risk Score",
   "description": "Output of the risk-scoring-engine. Contains usage and maintenance scores for a vehicle, along with contributing factors for explainability and regulatory transparency.",
   "type": "object",
@@ -24,10 +24,10 @@
       "description": "Identifier of the vehicle being scored."
     },
     "usage_score": {
-      "type": "number",
+      "type": ["number", "null"],
       "minimum": 0,
       "maximum": 100,
-      "description": "Driving behaviour / usage risk score (0 = highest risk, 100 = lowest risk)."
+      "description": "Driving behaviour / usage risk score (0 = highest risk, 100 = lowest risk). Null when no trip data exists."
     },
     "maintenance_score": {
       "type": ["number", "null"],
@@ -39,7 +39,7 @@
       "type": ["number", "null"],
       "minimum": 0,
       "maximum": 100,
-      "description": "Weighted composite of usage and maintenance scores (optional — computed by pricing-policy if not provided). MUST be null whenever maintenance_score is null; never a usage-only blend."
+      "description": "Weighted composite of usage and maintenance scores (optional — computed by pricing-policy if not provided). MUST be null unless BOTH usage_score and maintenance_score are non-null; never a usage-only or maintenance-only blend."
     },
     "computed_at": {
       "type": "string",
@@ -77,7 +77,7 @@
     "data_flags": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Data-quality flags, e.g. 'conflicting_records_detected', 'recall_status_unavailable'."
+      "description": "Data-quality flags, e.g. 'conflicting_records_detected', 'recall_status_unavailable', 'usage_data_unavailable'."
     },
     "contributing_factors": {
       "type": "array",

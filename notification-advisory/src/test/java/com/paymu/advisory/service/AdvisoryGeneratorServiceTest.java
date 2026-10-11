@@ -66,6 +66,21 @@ class AdvisoryGeneratorServiceTest {
                 "2026-09-23T10:00:00Z", "v1.0.0-stub", List.of());
     }
 
+    private ScoreResponse nullScores() {
+        return new ScoreResponse("s-3", "v-001", null, null, null,
+                "2026-09-23T10:00:00Z", "v1.0.0-stub", List.of());
+    }
+
+    private ScoreResponse nullUsageScore(Double maintenance) {
+        return new ScoreResponse("s-4", "v-001", null, maintenance, null,
+                "2026-09-23T10:00:00Z", "v1.0.0-stub", List.of());
+    }
+
+    private ScoreResponse nullMaintenanceScore(Double usage) {
+        return new ScoreResponse("s-5", "v-001", usage, null, null,
+                "2026-09-23T10:00:00Z", "v1.0.0-stub", List.of());
+    }
+
     // ── Required test 1: Open recall triggers CRITICAL advisory ───────────────
 
     @Test
@@ -194,5 +209,47 @@ class AdvisoryGeneratorServiceTest {
                 .anyMatch(m -> m.advisoryType().equals("SAFE_DRIVING_COMMENDATION"));
         assertTrue(hasCommendation,
                 "Score of 96.8 should trigger a commendation advisory");
+    }
+
+    // ── Additional: Null scores safety ────────────────────────────────────────
+
+    @Test
+    @DisplayName("Null composite and null component scores → no score advisories generated")
+    void nullScores_neverProducesScoreAdvisories() {
+        List<AdvisoryMessage> result = assertDoesNotThrow(
+                () -> service.generate(noRecall(), recentTimeline(), nullScores()));
+
+        boolean hasScoreAdvisory = result.stream()
+                .anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
+                        || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION"));
+        assertFalse(hasScoreAdvisory, "Null scores must not produce score advisories");
+    }
+
+    @Test
+    @DisplayName("Null usage score → composite is null and no score advisories generated")
+    void nullUsage_neverProducesScoreAdvisories() {
+        List<AdvisoryMessage> lowResult = assertDoesNotThrow(
+                () -> service.generate(noRecall(), recentTimeline(), nullUsageScore(20.0)));
+        assertFalse(lowResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
+                || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+
+        List<AdvisoryMessage> highResult = assertDoesNotThrow(
+                () -> service.generate(noRecall(), recentTimeline(), nullUsageScore(95.0)));
+        assertFalse(highResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
+                || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+    }
+
+    @Test
+    @DisplayName("Null maintenance score → composite is null and no score advisories generated")
+    void nullMaintenance_neverProducesScoreAdvisories() {
+        List<AdvisoryMessage> lowResult = assertDoesNotThrow(
+                () -> service.generate(noRecall(), recentTimeline(), nullMaintenanceScore(20.0)));
+        assertFalse(lowResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
+                || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+
+        List<AdvisoryMessage> highResult = assertDoesNotThrow(
+                () -> service.generate(noRecall(), recentTimeline(), nullMaintenanceScore(95.0)));
+        assertFalse(highResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
+                || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
     }
 }

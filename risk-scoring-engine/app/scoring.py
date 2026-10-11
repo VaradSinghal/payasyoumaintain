@@ -204,13 +204,13 @@ def calculate_maintenance_score(request: ScoreRequest) -> Tuple[float, List[Cont
     h = calculate_vehicle_health(request)
     return h.maintenance_score, h.factors
 
-def calculate_usage_score(request: ScoreRequest) -> Tuple[float, List[ContributingFactor]]:
-    score = 100.0
-    factors = []
-    
+def calculate_usage_score(request: ScoreRequest) -> Tuple[Optional[float], List[ContributingFactor]]:
     trips = request.trip_aggregates
     if not trips:
-        return score, factors
+        return None, []
+
+    score = 100.0
+    factors = []
         
     total_trips = len(trips)
     total_harsh_brakes = sum(t.harsh_braking_count for t in trips)
@@ -253,6 +253,9 @@ def generate_score(vehicle_id: str, request: ScoreRequest) -> dict:
     u_score, u_factors = calculate_usage_score(request)
     
     factors = m_factors + u_factors
+    flags = list(health.flags)
+    if u_score is None:
+        flags.append("usage_data_unavailable")
     
     # Ensure there's at least one contributing factor if both lists are empty
     if not factors:
@@ -269,13 +272,13 @@ def generate_score(vehicle_id: str, request: ScoreRequest) -> dict:
         for f in factors:
             f.impact = round(f.impact / total_impact, 2)
             
-    # composite is null whenever maintenance_score is null — never a usage-only blend.
-    composite = None if m_score is None else (m_score * 0.4) + (u_score * 0.6)
+    # composite_score is null unless both component scores exist
+    composite = None if (m_score is None or u_score is None) else (m_score * 0.4) + (u_score * 0.6)
     
     result = {
         "score_id": str(uuid.uuid4()),
         "vehicle_id": vehicle_id,
-        "usage_score": round(u_score, 2),
+        "usage_score": None if u_score is None else round(u_score, 2),
         "maintenance_score": None if m_score is None else round(m_score, 2),
         "composite_score": None if composite is None else round(composite, 2),
         "computed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
@@ -285,7 +288,7 @@ def generate_score(vehicle_id: str, request: ScoreRequest) -> dict:
         "vehicle_health_score": None if health.score is None else round(health.score, 2),
         "renewal_recommendation": generate_recommendation(health),
         "has_open_recall": health.has_open_recall,
-        "data_flags": health.flags,
+        "data_flags": flags,
     }
     # health_confidence is only defined when a score exists (schema enum has no null).
     if health.confidence is not None:

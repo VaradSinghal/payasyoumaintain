@@ -16,9 +16,9 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`usage-event.schema.json`](schemas/usage-event.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
 | [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
-| [`score.schema.json`](schemas/score.schema.json) | v1.1.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
+| [`score.schema.json`](schemas/score.schema.json) | v1.2.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
-| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.0.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
+| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.1.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 | [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
 
 ## Versioning Policy
@@ -51,13 +51,16 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-08 | `score.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening, consumer-breaking) | `maintenance_score` (required), `composite_score` and `has_open_recall` widened from non-null to nullable. Previously these fields could only express a concrete value, so a `false` / `100` could actually mean "unknown" (recall source unavailable, or no service events on file). `null` now means unknown and must never be collapsed to `false` or a neutral number. Versioned as Minor per project decision; note the Versioning Policy table would classify a type change as Major, so consumers must still handle `null` before the producer emits it (see rollout rule 5). |
 | 2026-10-08 | `dtc-reading.schema.json` | — | v1.0.0 | **New** | Introduced DTC reading schema (obd_device / manual_entry). Produced by maintenance-vehicle-health-ingestion, explicitly not wired into risk-scoring-engine yet. Patch-equivalent additive addition. |
 | 2026-10-08 | `dtc-reading.schema.json` | v1.0.0 | v1.1.0 | **Minor** | Replaced `dtc_codes` and `confirmed` with two required arrays: `confirmed_codes` and `pending_codes` (a single boolean couldn't represent a poll returning both stored and pending codes). Added conditional `device_id` rules. |
+| 2026-10-11 | `score.schema.json` | v1.1.0 | v1.2.0 | **Minor** (type-widening, consumer-breaking) | `usage_score` widened from non-null to nullable; `composite_score` updated to require both component scores. Previously `usage_score` was a required number, which meant "unknown" was represented as a neutral 100. `usage_score` is now `null` when no trip data exists, `composite_score` is `null` unless BOTH `usage_score` and `maintenance_score` are non-null, and `usage_data_unavailable` added to `data_flags`. |
+| 2026-10-11 | `premium-response.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening) | `usage_score`, `maintenance_score`, and `composite_score` inside `score_detail` widened from non-null to nullable to reflect scorer null semantics. |
 
-### Null semantics in `score.schema.json` (v1.1.0)
+### Null semantics in `score.schema.json` (v1.2.0)
 
+- `usage_score`: `null` when no trip data exists (`trip_aggregates` omitted or empty). In this case, `usage_data_unavailable` is added to `data_flags`. Never collapse `null` to a default or 100.
 - `has_open_recall`: `true` / `false` when known; `null` = unknown/unavailable (e.g. recall source timed out). Never collapse `null` to `false`.
 - `maintenance_score`: `null` when `health_status` is `insufficient_data`.
-- `composite_score`: **MUST be `null` whenever `maintenance_score` is `null`.** Producers and consumers must never silently fall back to a usage-only blend.
-- Consumers (pricing-policy, notification-advisory, mobile-app) must handle `null` for all three fields before the producer starts emitting them.
+- `composite_score`: **MUST be `null` unless BOTH `usage_score` and `maintenance_score` are non-null.** Producers and consumers must never silently fall back to a usage-only or maintenance-only blend.
+- Consumers (pricing-policy, notification-advisory, mobile-app) must handle `null` for all four fields before the producer starts emitting them.
 
 ## Validation Integration
 

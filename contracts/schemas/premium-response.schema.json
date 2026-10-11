@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.0.1",
+  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.1.0",
   "title": "Premium Response",
   "description": "Response payload from the pricing-policy service containing the computed premium breakdown.",
   "type": "object",
@@ -84,9 +84,9 @@
       "description": "Risk scoring details that informed the premium calculation.",
       "required": ["usage_score", "maintenance_score", "composite_score"],
       "properties": {
-        "usage_score": { "type": "number", "description": "0-100 usage score." },
-        "maintenance_score": { "type": "number", "description": "0-100 maintenance score." },
-        "composite_score": { "type": "number", "description": "0-100 overall composite score." },
+        "usage_score": { "type": ["number", "null"], "description": "0-100 usage score. Null when no trip data exists." },
+        "maintenance_score": { "type": ["number", "null"], "description": "0-100 maintenance score. Null when health_status is 'insufficient_data'." },
+        "composite_score": { "type": ["number", "null"], "description": "0-100 overall composite score. Null unless both component scores exist." },
         "contributing_factors": {
           "type": "array",
           "items": {

@@ -147,6 +147,31 @@ class PricingEngineTest {
         assertEquals("Dynamic Risk Multiplier is illustrative, pending actuarial validation on real claims data (Phase A).", resp.methodologyNote());
     }
 
+    @Test
+    @DisplayName("Null usage_score, null composite_score, and usage_data_unavailable flag are passed to score_detail with cold_start_neutral multiplier")
+    void nullUsageScore_passesThroughWithColdStartNeutral() {
+        ScoreResponse scoreWithNullUsage = new ScoreResponse(
+                "s-null", "v-123",
+                null,
+                100.0,
+                null,
+                "2026-10-11T10:00:00Z", "v1.2.0",
+                "scored", 100.0, "verified", "renew", false,
+                java.util.List.of("usage_data_unavailable"),
+                java.util.List.of()
+        );
+
+        PremiumResponse resp = engine.compute(PERFECT_MAINTAINER, rid(), pid(), scoreWithNullUsage);
+
+        assertEquals(1.0, resp.dynamicMultiplier());
+        assertTrue(resp.discountBreakdown().stream().anyMatch(d -> d.reason().equals("cold_start_neutral") && d.adjustmentPct() == 0.0));
+        assertNotNull(resp.scoreDetail());
+        assertNull(resp.scoreDetail().usageScore());
+        assertEquals(100.0, resp.scoreDetail().maintenanceScore());
+        assertNull(resp.scoreDetail().compositeScore());
+        assertTrue(resp.scoreDetail().dataFlags().contains("usage_data_unavailable"));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static String rid() { return java.util.UUID.randomUUID().toString(); }
@@ -154,7 +179,7 @@ class PricingEngineTest {
 
     private ScoreResponse score(Double usage, Double maintenance, Double composite) {
         return new ScoreResponse("s-123", "v-123",
-                usage != null ? usage : 0.0,
+                usage,
                 maintenance,
                 composite,
                 "2026-09-25T10:00:00Z", "v1", 

@@ -225,8 +225,9 @@ def test_cold_start_profile():
 
     assert score["health_status"] == "insufficient_data"
     assert score["maintenance_score"] is None
-    assert score["usage_score"] == 100.0
+    assert score["usage_score"] is None
     assert score["composite_score"] is None
+    assert "usage_data_unavailable" in score["data_flags"]
 
     factors = [f["factor_name"] for f in score["contributing_factors"]]
     assert "insufficient_data" in factors
@@ -250,7 +251,8 @@ def test_cold_start_with_recall():
     assert score["maintenance_score"] is None
     assert score["composite_score"] is None
     assert score["has_open_recall"] is True
-    assert score["usage_score"] == 100.0
+    assert score["usage_score"] is None
+    assert "usage_data_unavailable" in score["data_flags"]
     
     factors = [f["factor_name"] for f in score["contributing_factors"]]
     assert "open_recall" in factors
@@ -288,7 +290,7 @@ def test_spec_6_1_normal():
     assert s["maintenance_score"] == 100.0
     assert s["health_confidence"] == "verified"
     assert s["has_open_recall"] is False
-    assert s["data_flags"] == []
+    assert s["data_flags"] == ["usage_data_unavailable"]
     assert s["renewal_recommendation"] == "Eligible for standard renewal - vehicle health profile is strong."
 
 
@@ -352,9 +354,11 @@ def test_spec_6_4b_incomplete_self_upload_recall_unavailable():
     assert s["vehicle_health_score"] == 85.0   # 0 + recall excluded + 15 gap
     assert s["health_confidence"] == "unverified_self_reported"
     assert "recall_status_unavailable" in s["data_flags"]
+    assert "usage_data_unavailable" in s["data_flags"]
     assert s["has_open_recall"] is None   # unknown, not collapsed to False
     assert s["maintenance_score"] == 85.0
-    assert s["composite_score"] is not None   # maintenance is scored here, so composite exists
+    assert s["usage_score"] is None
+    assert s["composite_score"] is None   # usage is unknown, so composite is null
     assert "self-reported" in s["renewal_recommendation"]
 
 
@@ -437,5 +441,78 @@ def test_composite_is_null_when_maintenance_score_is_null():
     assert s["usage_score"] == 100.0
     assert s["maintenance_score"] is None
     assert s["composite_score"] is None
+
+
+def test_no_trips_full_history():
+    """(a) no trips + full history -> usage null, composite null, health score present."""
+    vid = "v-no-trips"
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 100, "oil_change", 30000, "oem_api"),
+            ev("e2", 200, "brake_service", 25000, "oem_api"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+        trip_aggregates=[],
+    )
+    s = generate_score(vid, req)
+    assert s["usage_score"] is None
+    assert s["composite_score"] is None
+    assert s["maintenance_score"] == 100.0
+    assert s["vehicle_health_score"] == 100.0
+    assert s["health_status"] == "scored"
+    assert s["renewal_recommendation"] is not None
+    assert "usage_data_unavailable" in s["data_flags"]
+
+
+def test_trips_no_service_records():
+    """(b) trips + no service records -> usage present, maintenance null, composite null."""
+    vid = "v-trips-only"
+    req = ScoreRequest(
+        service_timeline=tl([]),
+        trip_aggregates=make_trips(vid, n=5, harsh_braking=0, hard_accel=0),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s = generate_score(vid, req)
+    assert s["usage_score"] == 100.0
+    assert s["maintenance_score"] is None
+    assert s["composite_score"] is None
+    assert s["vehicle_health_score"] is None
+    assert s["health_status"] == "insufficient_data"
+    assert "usage_data_unavailable" not in s["data_flags"]
+
+
+def test_neither_trips_nor_service():
+    """(c) neither -> all null."""
+    vid = "v-neither"
+    req = ScoreRequest(
+        service_timeline=tl([]),
+        trip_aggregates=[],
+    )
+    s = generate_score(vid, req)
+    assert s["usage_score"] is None
+    assert s["maintenance_score"] is None
+    assert s["composite_score"] is None
+    assert s["vehicle_health_score"] is None
+    assert s["health_status"] == "insufficient_data"
+    assert "usage_data_unavailable" in s["data_flags"]
+
+
+def test_api_schema_validation_with_null_usage():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    req = {
+        "service_timeline": None,
+        "trip_aggregates": []
+    }
+    resp = client.post("/score/11111111-1111-1111-1111-111111111111", json=req)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["usage_score"] is None
+    assert data["maintenance_score"] is None
+    assert data["composite_score"] is None
+    assert "usage_data_unavailable" in data["data_flags"]
 
 

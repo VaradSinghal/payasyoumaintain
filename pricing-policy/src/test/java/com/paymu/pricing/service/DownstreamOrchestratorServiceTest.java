@@ -78,4 +78,45 @@ class DownstreamOrchestratorServiceTest {
         assertEquals(java.util.UUID.nameUUIDFromBytes(("policy_" + vehicleId).getBytes()).toString(), policyId);
         server.verify();
     }
+
+    @Test
+    void fetchScore_deserializesNullUsageScoreSuccessfully() throws Exception {
+        String vehicleId = "v-456";
+        server.expect(requestTo("http://maintenance/timeline/" + vehicleId))
+                .andRespond(withSuccess("{\"events\": []}", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://telematics/aggregates/" + vehicleId))
+                .andRespond(withSuccess("[]", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://maintenance/recall-status/" + vehicleId))
+                .andRespond(withSuccess("{\"vehicle_id\":\"v-456\",\"availability\":\"available\",\"has_open_recall\":false}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        String scorerResponse = """
+            {
+                "score_id": "s-null-usage",
+                "vehicle_id": "v-456",
+                "usage_score": null,
+                "maintenance_score": null,
+                "composite_score": null,
+                "computed_at": "2026-10-11T12:00:00Z",
+                "model_version": "v1.2.0",
+                "health_status": "insufficient_data",
+                "vehicle_health_score": null,
+                "renewal_recommendation": "Schedule baseline inspection",
+                "has_open_recall": false,
+                "data_flags": ["usage_data_unavailable"],
+                "contributing_factors": []
+            }
+        """;
+
+        server.expect(requestTo("http://scoring/score/" + vehicleId))
+                .andRespond(withSuccess(scorerResponse, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        com.paymu.pricing.model.ScoreResponse result = service.fetchScore(vehicleId, 12);
+
+        assertNotNull(result);
+        assertNull(result.usageScore());
+        assertNull(result.maintenanceScore());
+        assertNull(result.compositeScore());
+        assertTrue(result.dataFlags().contains("usage_data_unavailable"));
+        server.verify();
+    }
 }

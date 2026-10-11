@@ -21,7 +21,7 @@ public record PremiumResponse(
         @JsonProperty("score_detail") ScoreDetail scoreDetail
 ) {
     public record ScoreDetail(
-            @JsonProperty("usage_score") double usageScore,
+            @JsonProperty("usage_score") Double usageScore,
             @JsonProperty("maintenance_score") Double maintenanceScore,
             @JsonProperty("composite_score") Double compositeScore,
             @JsonProperty("health_status") String healthStatus,

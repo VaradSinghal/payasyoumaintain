@@ -94,35 +94,38 @@ public class AdvisoryGeneratorService {
 
         // ── 3. MEDIUM: Low risk score ─────────────────────────────────────────
         if (score != null) {
-            double composite = score.compositeScore() != null
-                    ? score.compositeScore()
-                    : (score.maintenanceScore() * 0.4 + score.usageScore() * 0.6);
+            Double composite = score.compositeScore();
+            if (composite == null && score.maintenanceScore() != null && score.usageScore() != null) {
+                composite = score.maintenanceScore() * 0.4 + score.usageScore() * 0.6;
+            }
 
-            if (composite < lowScoreThreshold) {
-                messages.add(new AdvisoryMessage(
-                        "LOW_RISK_SCORE",
-                        AdvisoryPriority.MEDIUM,
-                        "Your Risk Score Is Affecting Your Premium",
-                        String.format(
-                                "Your current composite risk score is %.0f/100. "
-                                        + "Improving your maintenance adherence and driving behaviour "
-                                        + "can reduce your premium at the next renewal. "
-                                        + "Tip: ensure your service is up to date and avoid harsh braking.",
-                                composite),
-                        "https://paym.app/score-details"
-                ));
-            } else if (composite >= 90.0) {
-                // Positive reinforcement for top-tier drivers
-                messages.add(new AdvisoryMessage(
-                        "SAFE_DRIVING_COMMENDATION",
-                        AdvisoryPriority.LOW,
-                        "Great Driving — You're on Track for a Discount",
-                        String.format(
-                                "Your risk score is %.0f/100 — you're in the top tier. "
-                                        + "Keep up the good work to lock in your lowest premium at renewal.",
-                                composite),
-                        "https://paym.app/score-details"
-                ));
+            if (composite != null) {
+                if (composite < lowScoreThreshold) {
+                    messages.add(new AdvisoryMessage(
+                            "LOW_RISK_SCORE",
+                            AdvisoryPriority.MEDIUM,
+                            "Your Risk Score Is Affecting Your Premium",
+                            String.format(
+                                    "Your current composite risk score is %.0f/100. "
+                                            + "Improving your maintenance adherence and driving behaviour "
+                                            + "can reduce your premium at the next renewal. "
+                                            + "Tip: ensure your service is up to date and avoid harsh braking.",
+                                    composite),
+                            "https://paym.app/score-details"
+                    ));
+                } else if (composite >= 90.0) {
+                    // Positive reinforcement for top-tier drivers
+                    messages.add(new AdvisoryMessage(
+                            "SAFE_DRIVING_COMMENDATION",
+                            AdvisoryPriority.LOW,
+                            "Great Driving — You're on Track for a Discount",
+                            String.format(
+                                    "Your risk score is %.0f/100 — you're in the top tier. "
+                                            + "Keep up the good work to lock in your lowest premium at renewal.",
+                                    composite),
+                            "https://paym.app/score-details"
+                    ));
+                }
             }
         }
 

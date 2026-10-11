@@ -64,7 +64,7 @@ class TripAggregate(BaseModel):
 
 class ScoreRequest(BaseModel):
     service_timeline: Optional[ServiceTimeline] = None
-    trip_aggregates: List[TripAggregate] = []
+    trip_aggregates: Optional[List[TripAggregate]] = None
     recall_status: Optional[RecallStatus] = None  # Structured recall input per recall-status.schema.json
     vehicle_age_months: Optional[int] = None      # Optional; used by the safety-critical gap rule
 
@@ -78,9 +78,9 @@ class ScoreResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     score_id: str
     vehicle_id: str
-    usage_score: float
-    maintenance_score: Optional[float]
-    composite_score: Optional[float]
+    usage_score: Optional[float] = None
+    maintenance_score: Optional[float] = None
+    composite_score: Optional[float] = None
     computed_at: str
     model_version: str
     contributing_factors: List[ContributingFactor]
