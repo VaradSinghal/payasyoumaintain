@@ -83,23 +83,38 @@ public class TriageService {
             return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
         }
 
-        // ── Mechanical failure — evaluate both signals ─────────────────────────
-        boolean flagForRecall       = evaluateRecall(recall, reasons);
-        boolean flagForCleanService = evaluateCleanService(timeline, reasons);
+        // ── Mechanical failure — evaluate signals with truthful precedence ───
+        boolean hasOpenRecall     = (recall != null && recall.hasOpenRecall());
+        boolean recallUnavailable = (recall == null);
 
-        if (flagForRecall || flagForCleanService) {
-            // Compose the maintenance signal summary
-            List<String> signals = new ArrayList<>();
-            if (flagForRecall)       signals.add("open recall on file");
-            if (flagForCleanService) signals.add("clean service within " + cleanServiceWindowDays + "-day window");
-            maintenanceSignal = String.join("; ", signals) + ".";
+        if (hasOpenRecall) {
+            reasons.add("Claimed cause is 'mechanical_failure'.");
+            reasons.add("open_recall_on_file: vehicle has " + recall.recallCount()
+                    + " open manufacturer recall(s) — a pending recall increases mechanical failure"
+                    + " plausibility and requires investigator review.");
+        } else if (recallUnavailable) {
+            reasons.add("Claimed cause is 'mechanical_failure'.");
+            reasons.add("recall_status_unavailable");
+        }
 
-            log.info("FNOL for vehicle {} → MANUAL_REVIEW [recall={}, cleanService={}]",
-                    request.vehicleId(), flagForRecall, flagForCleanService);
+        boolean hasCleanService = evaluateCleanService(timeline, reasons);
+
+        // Precedence: open recall > recall unavailable > clean service > none
+        if (hasOpenRecall) {
+            maintenanceSignal = "open recall on file.";
+            log.info("FNOL for vehicle {} → MANUAL_REVIEW [open_recall=true]", request.vehicleId());
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+        } else if (recallUnavailable) {
+            maintenanceSignal = "recall status unavailable.";
+            log.info("FNOL for vehicle {} → MANUAL_REVIEW [recall_unavailable=true]", request.vehicleId());
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+        } else if (hasCleanService) {
+            maintenanceSignal = "clean service within " + cleanServiceWindowDays + "-day window.";
+            log.info("FNOL for vehicle {} → MANUAL_REVIEW [clean_service=true]", request.vehicleId());
             return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
         }
 
-        // ── Neither signal fired → plausible, STP ─────────────────────────────
+        // ── No disqualifying signals found → plausible, STP ───────────────────
         reasons.add("Claimed cause is 'mechanical_failure'.");
         reasons.add("Confirmed no open recall on file and no clean service record found within the last "
                 + cleanServiceWindowDays + " days — claim is plausible.");
@@ -107,28 +122,6 @@ public class TriageService {
         return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
     }
 
-    // ── Recall evaluation ─────────────────────────────────────────────────────
-
-    /**
-     * Checks the structured recall status. Adds a distinct {@code "open_recall_on_file"}
-     * reason entry if triggered. Returns true if this signal alone is sufficient to
-     * route to MANUAL_REVIEW.
-     */
-    private boolean evaluateRecall(RecallStatus recall, List<String> reasons) {
-        if (recall == null) {
-            reasons.add("Claimed cause is 'mechanical_failure'.");
-            reasons.add("recall_status_unavailable");
-            return true;
-        }
-        if (recall.hasOpenRecall()) {
-            reasons.add("Claimed cause is 'mechanical_failure'.");
-            reasons.add("open_recall_on_file: vehicle has " + recall.recallCount()
-                    + " open manufacturer recall(s) — a pending recall increases mechanical failure"
-                    + " plausibility and requires investigator review.");
-            return true;
-        }
-        return false;
-    }
 
     // ── Clean-service evaluation ──────────────────────────────────────────────
 

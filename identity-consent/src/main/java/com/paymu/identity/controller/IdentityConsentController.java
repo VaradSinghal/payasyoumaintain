@@ -10,6 +10,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
 @RestController
 @RequestMapping
 public class IdentityConsentController {
@@ -27,36 +31,48 @@ public class IdentityConsentController {
     }
 
     @GetMapping("/vehicles/{vehicleId}")
-    public ResponseEntity<VehicleRegistration> getRegistration(@PathVariable String vehicleId) {
-        VehicleRegistration registration = registrationService.getRegistration(vehicleId);
+    public ResponseEntity<?> getRegistration(@PathVariable UUID vehicleId) {
+        VehicleRegistration registration = registrationService.getRegistration(vehicleId.toString());
         if (registration == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "NOT_FOUND",
+                    "message", "Vehicle not found: " + vehicleId,
+                    "timestamp", Instant.now().toString()
+            ));
         }
         return ResponseEntity.ok(registration);
     }
 
     @GetMapping("/vehicles/{vehicleId}/consent")
-    public ResponseEntity<ConsentRecord> getConsent(@PathVariable String vehicleId) {
-        ConsentRecord consent = registrationService.getConsent(vehicleId);
+    public ResponseEntity<?> getConsent(@PathVariable UUID vehicleId) {
+        ConsentRecord consent = registrationService.getConsent(vehicleId.toString());
         if (consent == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "NOT_FOUND",
+                    "message", "Consent not found for vehicle: " + vehicleId,
+                    "timestamp", Instant.now().toString()
+            ));
         }
         return ResponseEntity.ok(consent);
     }
 
     @PutMapping("/vehicles/{vehicleId}/consent")
-    public ResponseEntity<ConsentRecord> updateConsent(
-            @PathVariable String vehicleId,
+    public ResponseEntity<?> updateConsent(
+            @PathVariable UUID vehicleId,
             @Valid @RequestBody ConsentUpdateRequest request) {
         try {
             ConsentRecord updated = registrationService.updateConsent(
-                    vehicleId, 
+                    vehicleId.toString(), 
                     request.usageTrackingOptIn(), 
                     request.maintenanceTrackingOptIn()
             );
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "NOT_FOUND",
+                    "message", "Vehicle not found: " + vehicleId,
+                    "timestamp", Instant.now().toString()
+            ));
         }
     }
 }

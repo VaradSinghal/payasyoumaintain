@@ -147,6 +147,81 @@ class TriageServiceTest {
                 "open_recall_on_file reason should be present");
         assertTrue(result.reasons().stream().anyMatch(r -> r.contains("clean service record")),
                 "clean service record reason should also be present");
+        assertEquals("open recall on file.", result.maintenanceSignal(),
+                "Precedence: open recall > clean service");
+    }
+
+    // ── maintenance_signal precedence tests ───────────────────────────────────
+
+    @Test
+    @DisplayName("maintenance_signal: open recall on file when recall is open")
+    void maintenanceSignal_openRecall() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(request, timeline(), openRecall());
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals("open recall on file.", result.maintenanceSignal());
+    }
+
+    @Test
+    @DisplayName("maintenance_signal: recall status unavailable when recall is null")
+    void maintenanceSignal_recallUnavailable() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(request, timeline(), null);
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals("recall status unavailable.", result.maintenanceSignal());
+    }
+
+    @Test
+    @DisplayName("maintenance_signal precedence: recall unavailable > clean service")
+    void maintenanceSignal_precedence_recallUnavailable_over_cleanService() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(30, null)); // clean service within window
+
+        // recall is null (unavailable), clean service exists
+        TriageService.TriageResult result = triageService.triage(request, tl, null);
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals("recall status unavailable.", result.maintenanceSignal(),
+                "Precedence: recall unavailable > clean service");
+    }
+
+    @Test
+    @DisplayName("maintenance_signal precedence: open recall > recall unavailable (when both evaluated, open recall wins)")
+    void maintenanceSignal_precedence_openRecall_over_cleanService() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(30, null));
+
+        TriageService.TriageResult result = triageService.triage(request, tl, openRecall());
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals("open recall on file.", result.maintenanceSignal(),
+                "Precedence: open recall > clean service");
+    }
+
+    @Test
+    @DisplayName("maintenance_signal: clean service within 90-day window when clean service and no recall")
+    void maintenanceSignal_cleanServiceOnly() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(30, null));
+
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals("clean service within 90-day window.", result.maintenanceSignal());
+    }
+
+    @Test
+    @DisplayName("maintenance_signal: No disqualifying maintenance signals found when neither fired")
+    void maintenanceSignal_none() {
+        FnolRequest request = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl  = timeline(event(120, null)); // old service outside window
+
+        TriageService.TriageResult result = triageService.triage(request, tl, noRecall());
+
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+        assertEquals("No disqualifying maintenance signals found.", result.maintenanceSignal());
     }
 
     // ── STP paths ─────────────────────────────────────────────────────────────

@@ -1,0 +1,200 @@
+package com.paymu.claims.controller;
+
+import com.paymu.claims.model.RecallStatus;
+import com.paymu.claims.model.ServiceTimeline;
+import com.paymu.claims.service.ClaimStore;
+import com.paymu.claims.service.MaintenanceClient;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.hamcrest.Matchers.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class ClaimsControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ClaimStore claimStore;
+
+    @MockBean
+    private MaintenanceClient maintenanceClient;
+
+    @BeforeEach
+    void setUp() {
+        claimStore.clear();
+    }
+
+    @Test
+    @DisplayName("POST /fnol with valid mechanical_failure returns 201")
+    void submitFnol_validMechanicalFailure_returns201() throws Exception {
+        when(maintenanceClient.fetchTimeline(anyString())).thenReturn(null);
+        when(maintenanceClient.fetchRecallStatus(anyString())).thenReturn(
+                new RecallStatus("a1b2c3d4-e5f6-7890-abcd-ef1234567890", false, 0, List.of(), "oem_recall_db", "2026-10-11T00:00:00Z")
+        );
+
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Engine suddenly stalled on the highway.",
+                    "claimed_cause": "mechanical_failure"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.claim_id").isNotEmpty())
+                .andExpect(jsonPath("$.claimed_cause").value("mechanical_failure"))
+                .andExpect(jsonPath("$.maintenance_signal").value("No disqualifying maintenance signals found."));
+    }
+
+    @Test
+    @DisplayName("POST /fnol with uppercase MECHANICAL_FAILURE returns 400 INVALID_REQUEST naming field and allowed values")
+    void submitFnol_uppercaseMechanicalFailure_returns400() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Engine stalled.",
+                    "claimed_cause": "MECHANICAL_FAILURE"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
+                .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with bogus claimed_cause returns 400 INVALID_REQUEST naming field and allowed values")
+    void submitFnol_bogusCause_returns400() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Something broke.",
+                    "claimed_cause": "bogus"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
+                .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with malformed JSON returns 400 INVALID_REQUEST")
+    void submitFnol_malformedJson_returns400() throws Exception {
+        String malformedJson = "{ \"vehicle_id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\", unclosed";
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(malformedJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with wrong types returns 400 INVALID_REQUEST")
+    void submitFnol_wrongTypes_returns400() throws Exception {
+        String jsonWithWrongType = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Engine stalled.",
+                    "claimed_cause": "mechanical_failure",
+                    "photo_refs": "not-an-array"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonWithWrongType))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("GET /claims/not-a-uuid returns 400 INVALID_REQUEST")
+    void getClaim_notAUuid_returns400() throws Exception {
+        mockMvc.perform(get("/claims/not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("claimId")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("GET /claims/{unknown valid uuid} returns 404 NOT_FOUND")
+    void getClaim_unknownUuid_returns404() throws Exception {
+        String unknownUuid = UUID.randomUUID().toString();
+        mockMvc.perform(get("/claims/" + unknownUuid))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with maintenance down returns maintenance_signal: recall status unavailable.")
+    void submitFnol_maintenanceDown_reportsRecallUnavailable() throws Exception {
+        // Both timeline and recall return null when maintenance is down
+        when(maintenanceClient.fetchTimeline(anyString())).thenReturn(null);
+        when(maintenanceClient.fetchRecallStatus(anyString())).thenReturn(null);
+
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Engine failure.",
+                    "claimed_cause": "mechanical_failure"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.triage_decision").value("MANUAL_REVIEW"))
+                .andExpect(jsonPath("$.maintenance_signal").value("recall status unavailable."));
+    }
+}

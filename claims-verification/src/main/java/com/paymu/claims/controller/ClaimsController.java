@@ -14,6 +14,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
 /**
  * REST controller for claims intake and verification.
  *
@@ -73,10 +77,14 @@ public class ClaimsController {
      * Retrieve a previously submitted claim by its system-assigned ID.
      */
     @GetMapping("/claims/{claimId}")
-    public ResponseEntity<FnolResponse> getClaim(@PathVariable String claimId) {
-        FnolResponse claim = claimStore.findById(claimId);
+    public ResponseEntity<?> getClaim(@PathVariable UUID claimId) {
+        FnolResponse claim = claimStore.findById(claimId.toString());
         if (claim == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "NOT_FOUND",
+                    "message", "Claim not found: " + claimId,
+                    "timestamp", Instant.now().toString()
+            ));
         }
         return ResponseEntity.ok(claim);
     }
