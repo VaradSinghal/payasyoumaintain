@@ -43,23 +43,23 @@ class PremiumResponse {
 }
 
 class ScoreDetail {
-  final double usageScore;
+  final double? usageScore;
   final double? maintenanceScore;
   final double? compositeScore;
   final String healthStatus;
   final double? vehicleHealthScore;
-  final String healthConfidence;
+  final String? healthConfidence;
   final String renewalRecommendation;
   final bool? hasOpenRecall;
   final List<String> dataFlags;
 
   ScoreDetail({
-    required this.usageScore,
+    this.usageScore,
     this.maintenanceScore,
     this.compositeScore,
     required this.healthStatus,
     this.vehicleHealthScore,
-    required this.healthConfidence,
+    this.healthConfidence,
     required this.renewalRecommendation,
     this.hasOpenRecall,
     required this.dataFlags,

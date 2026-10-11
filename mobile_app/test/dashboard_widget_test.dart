@@ -90,10 +90,10 @@ void main() {
     );
   }
 
-  group('Dashboard Widget Tests', () {
-    testWidgets('Recall false (no banner) - rendered from live quote_demo_veh_001.json', (tester) async {
+  group('Dashboard Widget Tests - 5 Demo Stories', () {
+    testWidgets('Story 1 (NORMAL): renders quote_demo_veh_001.json without error', (tester) async {
       final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_001.json'));
-      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_003.json'));
+      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_001.json'));
 
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
@@ -103,24 +103,77 @@ void main() {
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsWidgets);
       expect(find.text('Maintenance Score'), findsOneWidget);
-      // No recall banner should be shown
       expect(find.text('URGENT: Your vehicle has an open safety recall.'), findsNothing);
       expect(find.text("Recall status couldn't be checked"), findsNothing);
 
       final listFinder = find.byType(Scrollable);
-      await tester.scrollUntilVisible(find.text('Manufacturer Recall — Immediate Action Required'), 50.0, scrollable: listFinder);
-      // Advisory shown
-      expect(find.text('Manufacturer Recall — Immediate Action Required'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text("Great Driving — You're on Track for a Discount"), 50.0, scrollable: listFinder);
+      expect(find.text("Great Driving — You're on Track for a Discount"), findsOneWidget);
     });
 
-    testWidgets('Recall true (red banner) - rendered from live quote_demo_veh_003.json', (tester) async {
-      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_003.json'));
-      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_001.json'));
+    testWidgets('Story 2 (POOR): renders quote_demo_veh_002.json with red recall banner', (tester) async {
+      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_002.json'));
+      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_002.json'));
 
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
+      expect(find.text('\$12265.34'), findsOneWidget);
       expect(find.text('URGENT: Your vehicle has an open safety recall.'), findsOneWidget);
+      expect(find.text('Usage Score'), findsOneWidget);
+      expect(find.text('75 / 100'), findsOneWidget);
+      expect(find.text('Maintenance Score'), findsOneWidget);
+      expect(find.text('15 / 100'), findsOneWidget);
+
+      final listFinder = find.byType(Scrollable);
+      await tester.scrollUntilVisible(find.text('Manufacturer Recall — Immediate Action Required'), 50.0, scrollable: listFinder);
+      expect(find.text('Manufacturer Recall — Immediate Action Required'), findsOneWidget);
+    });
+
+    testWidgets('Story 3 (CONFLICTING): renders quote_demo_veh_003.json without error', (tester) async {
+      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_003.json'));
+      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_003.json'));
+
+      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
+      await tester.pumpAndSettle();
+
+      expect(find.text('\$21075.60'), findsOneWidget);
+      expect(find.text('Usage Score'), findsOneWidget);
+      expect(find.text('85 / 100'), findsOneWidget);
+      expect(find.text('Maintenance Score'), findsOneWidget);
+      expect(find.text('100 / 100'), findsOneWidget);
+      expect(find.text('URGENT: Your vehicle has an open safety recall.'), findsNothing);
+    });
+
+    testWidgets('Story 4 (UNVERIFIED): renders quote_demo_veh_004.json with unverified badge', (tester) async {
+      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_004.json'));
+      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_004.json'));
+
+      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
+      await tester.pumpAndSettle();
+
+      expect(find.text('\$6563.70'), findsOneWidget);
+      expect(find.text('Unverified — self-reported only'), findsOneWidget);
+      expect(find.text('Usage Score'), findsOneWidget);
+      expect(find.text('100 / 100'), findsOneWidget);
+      expect(find.text('Maintenance Score'), findsOneWidget);
+      expect(find.text('85 / 100'), findsOneWidget);
+    });
+
+    testWidgets('Story 5 (INSUFFICIENT): renders quote_demo_veh_005.json and null usage score reads "Not enough data yet"', (tester) async {
+      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_005.json'));
+      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_005.json'));
+
+      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
+      await tester.pumpAndSettle();
+
+      expect(find.text('\$44460.00'), findsOneWidget);
+      expect(find.text('Insufficient Data'), findsOneWidget);
+      expect(find.text('Not enough data yet'), findsWidgets);
+
+      final listFinder = find.byType(Scrollable);
+      await tester.scrollUntilVisible(find.text('No Service Records on File'), 50.0, scrollable: listFinder);
+      expect(find.text('No Service Records on File'), findsOneWidget);
     });
 
     testWidgets('Recall null (amber "couldn\'t check" notice) - rendered from derived live fixture', (tester) async {
@@ -131,40 +184,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text("Recall status couldn't be checked"), findsOneWidget);
-    });
-
-    testWidgets('insufficient_data state - rendered from live quote_fresh_unregistered.json', (tester) async {
-      final pricingApi = FakePricingApi(loadQuoteFixture('quote_fresh_unregistered.json'));
-      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_fresh_unregistered.json'));
-
-      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Insufficient Data'), findsOneWidget);
-      expect(find.text('Not enough data yet'), findsWidgets);
-    });
-
-    testWidgets('unverified badge - rendered from derived live fixture', (tester) async {
-      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_001_derived_unverified.json'));
-      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_001.json'));
-
-      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unverified — self-reported only'), findsOneWidget);
-    });
-
-    testWidgets('empty advisories - rendered from live advisories_demo_veh_001.json', (tester) async {
-      final pricingApi = FakePricingApi(loadQuoteFixture('quote_demo_veh_001.json'));
-      final advisoryApi = FakeAdvisoryApi(loadAdvisoryFixture('advisories_demo_veh_001.json'));
-
-      await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
-      await tester.pumpAndSettle();
-
-      final listFinder = find.byType(Scrollable);
-      await tester.scrollUntilVisible(find.text('All caught up'), 50.0, scrollable: listFinder);
-
-      expect(find.text('All caught up'), findsOneWidget);
     });
 
     testWidgets('error with a working retry', (tester) async {

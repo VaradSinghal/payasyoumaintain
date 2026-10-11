@@ -1,1 +1,1 @@
-{"advisories":[],"vehicle_id":"e5f6a7b8-c9d0-1234-efab-345678901234","generated_at":"2026-10-11T08:40:55.170547016Z"}
+{"advisories":[{"priority":"HIGH","title":"No Service Records on File","message":"We have no maintenance records for your vehicle. Upload your past service receipts to unlock maintenance-linked discounts.","advisory_type":"NO_SERVICE_RECORD","action_url":"https://paym.app/upload-service"}],"vehicle_id":"e5f6a7b8-c9d0-1234-efab-345678901234","generated_at":"2026-10-11T13:30:21.051895081Z"}

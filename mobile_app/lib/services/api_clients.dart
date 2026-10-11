@@ -227,4 +227,32 @@ class MaintenanceApi {
       throw e.error ?? ApiException(null, 'Network error');
     }
   }
+
+  Future<MaintenanceTimeline> getTimeline(String vehicleId) async {
+    if (ApiConfig.isDemoMode) {
+      return MaintenanceTimeline(vehicleId: vehicleId, totalServices: 0, events: []);
+    }
+    try {
+      final response = await _dio.get('/timeline/$vehicleId');
+      return MaintenanceTimeline.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw e.error ?? ApiException(null, 'Network error');
+    }
+  }
+}
+
+class TelematicsApi {
+  final Dio _dio = _createDio(ApiConfig.telematicsUrl);
+
+  Future<List<TripAggregate>> getAggregates(String vehicleId) async {
+    if (ApiConfig.isDemoMode) {
+      return [];
+    }
+    try {
+      final response = await _dio.get('/aggregates/$vehicleId');
+      return TripAggregate.fromJsonList(response.data as List<dynamic>);
+    } on DioException catch (e) {
+      throw e.error ?? ApiException(null, 'Network error');
+    }
+  }
 }

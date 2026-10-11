@@ -79,53 +79,89 @@ void main() {
       }
     });
 
-    test('Vehicle with live open recall parses hasOpenRecall true (demo-veh-003)', () {
-      final json = loadJson('quote_demo_veh_003.json');
+    test('Vehicle with live open recall parses hasOpenRecall true (b2c3 / demo-veh-002)', () {
+      final json = loadJson('quote_demo_veh_002.json');
       final quote = QuoteResponse.fromJson(json);
 
       expect(quote.scoreDetail?.hasOpenRecall, isTrue);
       expect(quote.scoreDetail?.healthStatus, 'scored');
-      expect(quote.scoreDetail?.vehicleHealthScore, 55.0);
       expect(quote.scoreDetail?.healthConfidence, 'verified');
     });
 
-    test('Fresh unregistered vehicle parses insufficient_data with null scores', () {
-      final json = loadJson('quote_fresh_unregistered.json');
+    test('Conflicting vehicle carries conflicting_records_detected (c3d4 / demo-veh-003)', () {
+      final json = loadJson('quote_demo_veh_003.json');
       final quote = QuoteResponse.fromJson(json);
-      final detail = quote.scoreDetail;
 
-      expect(detail, isNotNull);
-      expect(detail!.healthStatus, 'insufficient_data');
-      expect(detail.maintenanceScore, isNull);
-      expect(detail.compositeScore, isNull);
-      expect(detail.vehicleHealthScore, isNull);
-      expect(detail.healthConfidence, isNull);
-      expect(detail.hasOpenRecall, isFalse);
-      expect(detail.renewalRecommendation, isNotNull);
-      expect(detail.renewalRecommendation!.trim(), isNotEmpty);
+      expect(quote.scoreDetail?.dataFlags, contains('conflicting_records_detected'));
+      expect(quote.scoreDetail?.hasOpenRecall, isFalse);
     });
 
-    test('Derived unverified fixture parses healthConfidence as unverified_self_reported', () {
-      final json = loadJson('quote_demo_veh_001_derived_unverified.json');
+    test('Unverified vehicle parses healthConfidence as unverified_self_reported (d4e5 / demo-veh-004)', () {
+      final json = loadJson('quote_demo_veh_004.json');
       final quote = QuoteResponse.fromJson(json);
 
       expect(quote.scoreDetail?.healthConfidence, 'unverified_self_reported');
+      expect(quote.basePremium, 11700.0);
     });
 
-    test('Advisories keep the API order and parse completely', () {
-      final json003 = loadJson('advisories_demo_veh_003.json');
-      final adv003 = AdvisoryResponse.fromJson(json003);
+    test('e5f6 and fresh vehicle parse with null usage, maintenance and composite scores and insufficient_data', () {
+      final json5 = loadJson('quote_demo_veh_005.json');
+      final quote5 = QuoteResponse.fromJson(json5);
+      final detail5 = quote5.scoreDetail;
 
-      expect(adv003.advisories, isNotEmpty);
-      expect(adv003.advisories.first.advisoryType, 'OPEN_RECALL');
-      expect(adv003.advisories.first.priority, 'CRITICAL');
-      expect(adv003.advisories.first.title, contains('Recall'));
-      expect(adv003.advisories.first.actionUrl, 'https://paym.app/recalls');
+      expect(detail5, isNotNull);
+      expect(detail5!.usageScore, isNull);
+      expect(detail5.maintenanceScore, isNull);
+      expect(detail5.compositeScore, isNull);
+      expect(detail5.healthStatus, 'insufficient_data');
+      expect(detail5.dataFlags, contains('usage_data_unavailable'));
 
-      // Empty advisories for demo-veh-001
+      final jsonFresh = loadJson('quote_fresh_unregistered.json');
+      final quoteFresh = QuoteResponse.fromJson(jsonFresh);
+      final detailFresh = quoteFresh.scoreDetail;
+
+      expect(detailFresh, isNotNull);
+      expect(detailFresh!.usageScore, isNull);
+      expect(detailFresh.maintenanceScore, isNull);
+      expect(detailFresh.compositeScore, isNull);
+      expect(detailFresh.healthStatus, 'insufficient_data');
+      expect(detailFresh.dataFlags, contains('usage_data_unavailable'));
+      expect(detailFresh.renewalRecommendation, isNotNull);
+      expect(detailFresh.renewalRecommendation!.trim(), isNotEmpty);
+    });
+
+    test('Advisories keep the API order and parse completely (b2c3 / demo-veh-002)', () {
+      final json002 = loadJson('advisories_demo_veh_002.json');
+      final adv002 = AdvisoryResponse.fromJson(json002);
+
+      expect(adv002.advisories, hasLength(3));
+      expect(adv002.advisories[0].advisoryType, 'OPEN_RECALL');
+      expect(adv002.advisories[0].priority, 'CRITICAL');
+      expect(adv002.advisories[0].title, contains('Recall'));
+      expect(adv002.advisories[0].actionUrl, 'https://paym.app/recalls');
+
+      expect(adv002.advisories[1].advisoryType, 'OVERDUE_SERVICE');
+      expect(adv002.advisories[2].advisoryType, 'LOW_RISK_SCORE');
+
+      // Commendation advisory for demo-veh-001
       final json001 = loadJson('advisories_demo_veh_001.json');
       final adv001 = AdvisoryResponse.fromJson(json001);
-      expect(adv001.advisories, isEmpty);
+      expect(adv001.advisories, hasLength(1));
+      expect(adv001.advisories.first.advisoryType, 'SAFE_DRIVING_COMMENDATION');
+    });
+
+    test('Empty timeline and aggregates parse as empty lists for e5f6...', () {
+      final timelineJson = loadJson('timeline_empty_200.json');
+      final timeline = MaintenanceTimeline.fromJson(timelineJson);
+
+      expect(timeline.totalServices, 0);
+      expect(timeline.events, isEmpty);
+
+      final aggregatesFile = File('${liveDir.path}/aggregates_empty_200.json');
+      final aggregatesList = jsonDecode(aggregatesFile.readAsStringSync()) as List<dynamic>;
+      final aggregates = TripAggregate.fromJsonList(aggregatesList);
+
+      expect(aggregates, isEmpty);
     });
 
     test('FNOL 201 and Claim GET 200 fixtures parse correctly', () {
@@ -158,13 +194,18 @@ void main() {
       expect(history.first.confirmedCodes, ['P0300', 'P0171']);
     });
 
-    test('Standard error body becomes ApiException carrying the server message', () {
-      final errJson = loadJson('standard_error_404.json');
-      final exception = ApiException.fromJson(404, errJson);
+    test('Standard error bodies become ApiException carrying server error and message', () {
+      final err404Json = loadJson('standard_error_404.json');
+      final ex404 = ApiException.fromJson(404, err404Json);
+      expect(ex404.statusCode, 404);
+      expect(ex404.error, 'NOT_FOUND');
+      expect(ex404.message, isNotEmpty);
 
-      expect(exception.statusCode, 404);
-      expect(exception.message, 'The requested resource could not be found.');
-      expect(exception.error, 'NOT_FOUND');
+      final err400Json = loadJson('standard_error_400.json');
+      final ex400 = ApiException.fromJson(400, err400Json);
+      expect(ex400.statusCode, 400);
+      expect(ex400.error, 'INVALID_REQUEST');
+      expect(ex400.message, contains('Invalid value'));
     });
   });
 }

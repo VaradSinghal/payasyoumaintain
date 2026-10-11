@@ -345,3 +345,118 @@ class DtcReading {
   }
 }
 
+class TimelineEvent {
+  final String? eventId;
+  final String? vehicleId;
+  final String? serviceDate;
+  final String? serviceType;
+  final double? odometerKm;
+  final String? source;
+  final String? notes;
+  final List<dynamic> partsReplaced;
+  final List<String> documentRefs;
+
+  TimelineEvent({
+    this.eventId,
+    this.vehicleId,
+    this.serviceDate,
+    this.serviceType,
+    this.odometerKm,
+    this.source,
+    this.notes,
+    this.partsReplaced = const [],
+    this.documentRefs = const [],
+  });
+
+  factory TimelineEvent.fromJson(Map<String, dynamic> json) {
+    return TimelineEvent(
+      eventId: json['event_id'] as String?,
+      vehicleId: json['vehicle_id'] as String?,
+      serviceDate: json['service_date'] as String?,
+      serviceType: json['service_type'] as String?,
+      odometerKm: (json['odometer_km'] as num?)?.toDouble(),
+      source: json['source'] as String?,
+      notes: json['notes'] as String?,
+      partsReplaced: (json['parts_replaced'] as List<dynamic>?) ?? const [],
+      documentRefs: (json['document_refs'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+class MaintenanceTimeline {
+  final String? vehicleId;
+  final int totalServices;
+  final String? latestServiceDate;
+  final double? latestOdometerKm;
+  final List<TimelineEvent> events;
+
+  MaintenanceTimeline({
+    this.vehicleId,
+    this.totalServices = 0,
+    this.latestServiceDate,
+    this.latestOdometerKm,
+    this.events = const [],
+  });
+
+  factory MaintenanceTimeline.fromJson(Map<String, dynamic> json) {
+    return MaintenanceTimeline(
+      vehicleId: json['vehicle_id'] as String?,
+      totalServices: (json['total_services'] as num?)?.toInt() ?? 0,
+      latestServiceDate: json['latest_service_date'] as String?,
+      latestOdometerKm: (json['latest_odometer_km'] as num?)?.toDouble(),
+      events: (json['events'] as List<dynamic>?)
+              ?.map((e) => TimelineEvent.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+}
+
+class TripAggregate {
+  final String tripId;
+  final String vehicleId;
+  final int eventCount;
+  final double avgSpeedKmh;
+  final double maxSpeedKmh;
+  final int harshBrakingCount;
+  final int hardAccelerationCount;
+  final double distanceKm;
+  final String tripStart;
+  final String tripEnd;
+
+  TripAggregate({
+    required this.tripId,
+    required this.vehicleId,
+    required this.eventCount,
+    required this.avgSpeedKmh,
+    required this.maxSpeedKmh,
+    required this.harshBrakingCount,
+    required this.hardAccelerationCount,
+    required this.distanceKm,
+    required this.tripStart,
+    required this.tripEnd,
+  });
+
+  factory TripAggregate.fromJson(Map<String, dynamic> json) {
+    return TripAggregate(
+      tripId: json['trip_id'] as String? ?? '',
+      vehicleId: json['vehicle_id'] as String? ?? '',
+      eventCount: (json['event_count'] as num?)?.toInt() ?? 0,
+      avgSpeedKmh: ((json['avg_speed_kmh'] ?? 0.0) as num).toDouble(),
+      maxSpeedKmh: ((json['max_speed_kmh'] ?? 0.0) as num).toDouble(),
+      harshBrakingCount: (json['harsh_braking_count'] as num?)?.toInt() ?? 0,
+      hardAccelerationCount: (json['hard_acceleration_count'] as num?)?.toInt() ?? 0,
+      distanceKm: ((json['distance_km'] ?? 0.0) as num).toDouble(),
+      tripStart: json['trip_start'] as String? ?? '',
+      tripEnd: json['trip_end'] as String? ?? '',
+    );
+  }
+
+  static List<TripAggregate> fromJsonList(List<dynamic> list) {
+    return list.map((e) => TripAggregate.fromJson(e as Map<String, dynamic>)).toList();
+  }
+}
+
