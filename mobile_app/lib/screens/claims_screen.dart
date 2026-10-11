@@ -84,8 +84,8 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
     String translatedDecision = triageDecision ?? 'Processing';
     Color decisionColor = Colors.grey;
 
-    if (triageDecision == 'AUTO_APPROVED') {
-      translatedDecision = 'Automatically Approved';
+    if (triageDecision == 'AUTO_APPROVED' || triageDecision == 'STRAIGHT_THROUGH_PROCESSING') {
+      translatedDecision = 'Straight-Through Processing';
       decisionColor = Colors.green;
     } else if (triageDecision == 'MANUAL_REVIEW') {
       translatedDecision = 'Requires Manual Review';

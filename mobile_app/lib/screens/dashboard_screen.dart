@@ -56,7 +56,7 @@ class DashboardScreen extends ConsumerWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      '\$${quote.finalPremium.toStringAsFixed(2)}',
+                      '₹${quote.finalPremium.toStringAsFixed(2)}',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             color: Theme.of(context).primaryColor,
                             fontWeight: FontWeight.bold,
@@ -318,9 +318,15 @@ class DashboardScreen extends ConsumerWidget {
     return Column(
       children: advisories.map((a) {
         Color color = Colors.grey;
-        if (a.priority == 'HIGH') color = Colors.red;
-        if (a.priority == 'MEDIUM') color = Colors.orange;
-        if (a.priority == 'LOW') color = Colors.blue;
+        if (a.priority == 'CRITICAL') {
+          color = Colors.red.shade900;
+        } else if (a.priority == 'HIGH') {
+          color = Colors.red;
+        } else if (a.priority == 'MEDIUM') {
+          color = Colors.orange;
+        } else if (a.priority == 'LOW') {
+          color = Colors.blue;
+        }
 
         return Card(
           child: ListTile(

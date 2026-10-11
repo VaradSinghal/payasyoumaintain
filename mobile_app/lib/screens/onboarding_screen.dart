@@ -190,7 +190,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const SizedBox(height: 32),
         if (_quote != null) ...[
           Text(
-            '\$${_quote!.finalPremium.toStringAsFixed(2)} / month',
+            '₹${_quote!.finalPremium.toStringAsFixed(2)} / month',
             style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.green),
           ),
           const SizedBox(height: 16),

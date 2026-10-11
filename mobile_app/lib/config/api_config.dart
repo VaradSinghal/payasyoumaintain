@@ -1,21 +1,28 @@
-import 'dart:io';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiConfig {
-  static const String _envHost = String.fromEnvironment('API_HOST');
+  static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
 
-  static String get _defaultHost {
-    if (_envHost.isNotEmpty) return _envHost;
-    if (Platform.isAndroid) return '10.0.2.2';
-    return 'localhost';
+  static String get baseUrl {
+    if (_envBaseUrl.isNotEmpty) {
+      return _envBaseUrl.endsWith('/')
+          ? _envBaseUrl.substring(0, _envBaseUrl.length - 1)
+          : _envBaseUrl;
+    }
+    // Web safe check: avoid calling dart:io Platform on web
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:8080';
+    }
+    return 'http://localhost:8080';
   }
 
-  static String get identityUrl => 'http://$_defaultHost:8081/api/v1';
-  static String get maintenanceUrl => 'http://$_defaultHost:8083/api/v1';
-  static String get telematicsUrl => 'http://$_defaultHost:8082/api/v1';
-  static String get scoringUrl => 'http://$_defaultHost:8084'; // Often /api/v1 is not in FastAPI, check if needed, but requirements didn't list it. Wait, the req said: identity-consent 8081, maintenance 8083, pricing-policy 8085, claims-verification 8086, notification-advisory 8087.
-  static String get pricingUrl => 'http://$_defaultHost:8085/api/v1';
-  static String get claimsUrl => 'http://$_defaultHost:8086/api/v1';
-  static String get advisoryUrl => 'http://$_defaultHost:8087/api/v1';
+  static String get identityUrl => '$baseUrl/identity/api/v1';
+  static String get pricingUrl => '$baseUrl/pricing/api/v1';
+  static String get claimsUrl => '$baseUrl/claims/api/v1';
+  static String get advisoryUrl => '$baseUrl/advisory/api/v1';
+  static String get maintenanceUrl => '$baseUrl/maintenance/api/v1';
+  static String get telematicsUrl => '$baseUrl/telematics/api/v1';
 
   static const bool isDemoMode = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
 }

@@ -3,12 +3,22 @@
 ## Overview
 This document defines the canonical API contract for the PayAsUMaintain backend services. All microservices enforce a consistent `/api/v1` base path prefix. The APIs use `snake_case` JSON serialization globally.
 
-### Mobile Integration & Networking
-**Local Development / Web**: `http://localhost:<PORT>/api/v1`
-**Android Emulator**: `http://10.0.2.2:<PORT>/api/v1`
-**Physical Devices**: Use the machine's local IP (e.g., `http://192.168.x.x:<PORT>/api/v1`)
+### Mobile & Web Client Integration (API Gateway)
+All mobile and web clients connect through the single-entry **API Gateway** on port **8080**:
+- **Gateway Base URL (Web / Localhost)**: `http://localhost:8080`
+- **Gateway Base URL (Android Emulator)**: `http://10.0.2.2:8080`
+- **Gateway Base URL (Physical Devices)**: `http://<HOST_IP>:8080`
 
-*Note: Do not use Docker compose service names (e.g., `http://identity-consent`) from the mobile app as they only resolve inside the Docker network.*
+#### Path Prefixes (Gateway strips prefix before proxying to `/api/v1/...`):
+- `/identity/*` &rarr; `identity-consent:8081` (`/api/v1/...`)
+- `/telematics/*` &rarr; `telematics-usage-ingestion:8082` (`/api/v1/...`)
+- `/maintenance/*` &rarr; `maintenance-vehicle-health-ingestion:8083` (`/api/v1/...`)
+- `/pricing/*` &rarr; `pricing-policy:8085` (`/api/v1/...`)
+- `/claims/*` &rarr; `claims-verification:8086` (`/api/v1/...`)
+- `/advisory/*` &rarr; `notification-advisory:8087` (`/api/v1/...`)
+*(Note: `risk-scoring-engine:8084` is internal-only and not exposed directly through the gateway).*
+
+*Direct service ports (8081–8087) remain published for local debugging and test isolation.*
 
 ---
 

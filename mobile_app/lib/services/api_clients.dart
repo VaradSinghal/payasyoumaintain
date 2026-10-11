@@ -6,9 +6,9 @@ import 'api_exception.dart';
 Dio _createDio(String baseUrl) {
   final dio = Dio(BaseOptions(
     baseUrl: baseUrl,
-    connectTimeout: const Duration(seconds: 8),
-    receiveTimeout: const Duration(seconds: 8),
-    sendTimeout: const Duration(seconds: 8),
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 30),
+    sendTimeout: const Duration(seconds: 15),
   ));
   dio.interceptors.add(InterceptorsWrapper(
     onError: (DioException e, handler) {
@@ -20,7 +20,17 @@ Dio _createDio(String baseUrl) {
           apiException = ApiException(e.response?.statusCode, e.response!.data.toString());
         }
       } else {
-        apiException = ApiException(e.response?.statusCode, e.message ?? 'Unknown error');
+        String msg = 'Network error: could not connect to server.';
+        if (e.type == DioExceptionType.connectionTimeout) {
+          msg = 'Connection timed out. Check your network or gateway.';
+        } else if (e.type == DioExceptionType.sendTimeout) {
+          msg = 'Send timed out. Check your network connection.';
+        } else if (e.type == DioExceptionType.receiveTimeout) {
+          msg = 'Server took too long to respond. Please try again.';
+        } else if (e.type == DioExceptionType.connectionError) {
+          msg = 'Unable to reach the server at $baseUrl. Ensure the backend gateway is running.';
+        }
+        apiException = ApiException(e.response?.statusCode, msg);
       }
       return handler.next(DioException(
         requestOptions: e.requestOptions,

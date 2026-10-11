@@ -98,7 +98,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('\$13977.60'), findsOneWidget);
+      expect(find.text('₹13977.60'), findsOneWidget);
       expect(find.text('Eligible for standard renewal - vehicle health profile is strong.'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsWidgets);
@@ -118,7 +118,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('\$12265.34'), findsOneWidget);
+      expect(find.text('₹12265.34'), findsOneWidget);
       expect(find.text('URGENT: Your vehicle has an open safety recall.'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('75 / 100'), findsOneWidget);
@@ -137,7 +137,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('\$21075.60'), findsOneWidget);
+      expect(find.text('₹21075.60'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('85 / 100'), findsOneWidget);
       expect(find.text('Maintenance Score'), findsOneWidget);
@@ -152,7 +152,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('\$6563.70'), findsOneWidget);
+      expect(find.text('₹6563.70'), findsOneWidget);
       expect(find.text('Unverified — self-reported only'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsOneWidget);
@@ -167,7 +167,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('\$44460.00'), findsOneWidget);
+      expect(find.text('₹44460.00'), findsOneWidget);
       expect(find.text('Insufficient Data'), findsOneWidget);
       expect(find.text('Not enough data yet'), findsWidgets);
 
@@ -203,7 +203,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should successfully load
-      expect(find.text('\$13977.60'), findsOneWidget);
+      expect(find.text('₹13977.60'), findsOneWidget);
     });
 
     testWidgets('Consent toggles start OFF', (tester) async {
