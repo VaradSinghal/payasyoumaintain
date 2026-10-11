@@ -62,7 +62,16 @@ public class DownstreamDataService {
         if (status == null) {
             return new RecallStatus(vehicleId, "unavailable", null, 0, java.util.Collections.emptyList(), "", "");
         }
-        return status;
+        String availability = status.availability() != null ? status.availability() : "available";
+        return new RecallStatus(
+                status.vehicleId(),
+                availability,
+                status.hasOpenRecall(),
+                status.recallCount(),
+                status.recallDetails(),
+                status.source(),
+                status.checkedAt()
+        );
     }
 
     /**
@@ -70,6 +79,7 @@ public class DownstreamDataService {
      * to get a risk score. This avoids a second downstream pull inside the scorer.
      */
     public ScoreResponse fetchScore(String vehicleId, JsonNode tripAggregates, ServiceTimeline timeline, RecallStatus recall) {
+        String url = scoringUrl + "/score/" + vehicleId;
         try {
             // Build a minimal ScoreRequest — only include what we have
             var payload = new java.util.LinkedHashMap<String, Object>();
@@ -80,12 +90,24 @@ public class DownstreamDataService {
                 payload.put("service_timeline", objectMapper.convertValue(timeline, Object.class));
             }
             if (recall != null) {
-                payload.put("recall_status", objectMapper.convertValue(recall, Object.class));
+                RecallStatus toSend = recall;
+                if (toSend.availability() == null) {
+                    toSend = new RecallStatus(
+                            toSend.vehicleId(),
+                            "available",
+                            toSend.hasOpenRecall(),
+                            toSend.recallCount(),
+                            toSend.recallDetails(),
+                            toSend.source(),
+                            toSend.checkedAt()
+                    );
+                }
+                payload.put("recall_status", objectMapper.convertValue(toSend, Object.class));
             }
 
             String body = objectMapper.writeValueAsString(payload);
             String responseBody = restClient.post()
-                    .uri(scoringUrl + "/score/" + vehicleId)
+                    .uri(url)
                     .header("Content-Type", "application/json")
                     .body(body)
                     .retrieve()
@@ -93,6 +115,13 @@ public class DownstreamDataService {
 
             return responseBody != null ? objectMapper.readValue(responseBody, ScoreResponse.class) : null;
 
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.error("Client error (4xx) calling scorer at {}: status={} body={}", url, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            } else {
+                log.warn("Scorer server error (5xx) for vehicle {}: status={}", vehicleId, e.getStatusCode());
+            }
+            return null;
         } catch (RestClientException e) {
             log.warn("Risk scoring engine unavailable for vehicle {}: {}", vehicleId, e.getMessage());
             return null;
@@ -107,6 +136,13 @@ public class DownstreamDataService {
     private <T> T get(String url, Class<T> type, String label) {
         try {
             return restClient.get().uri(url).retrieve().body(type);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.error("Client error (4xx) calling {} from {}: status={} body={}", label, url, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            } else {
+                log.warn("Server error (5xx) calling {} from {}: status={}", label, url, e.getStatusCode());
+            }
+            return null;
         } catch (RestClientException e) {
             log.debug("Could not fetch {} from {}: {}", label, url, e.getMessage());
             return null;

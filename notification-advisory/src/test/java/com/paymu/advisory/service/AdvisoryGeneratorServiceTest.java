@@ -252,4 +252,32 @@ class AdvisoryGeneratorServiceTest {
         assertFalse(highResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")
                 || m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
     }
+
+    @Test
+    @DisplayName("Composite below 60 gives LOW_RISK_SCORE, 90 or above gives SAFE_DRIVING_COMMENDATION, and null gives neither")
+    void scoreThresholds_testLowHighAndNull() {
+        // Below 60 (59.0) -> LOW_RISK_SCORE
+        ScoreResponse low = new ScoreResponse("s-low", "v-001", 59.0, 59.0, 59.0, "now", "v1", List.of());
+        List<AdvisoryMessage> lowResult = service.generate(noRecall(), recentTimeline(), low);
+        assertTrue(lowResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")));
+        assertFalse(lowResult.stream().anyMatch(m -> m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+
+        // 90 or above (90.0) -> SAFE_DRIVING_COMMENDATION
+        ScoreResponse high = new ScoreResponse("s-high", "v-001", 90.0, 90.0, 90.0, "now", "v1", List.of());
+        List<AdvisoryMessage> highResult = service.generate(noRecall(), recentTimeline(), high);
+        assertTrue(highResult.stream().anyMatch(m -> m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+        assertFalse(highResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")));
+
+        // null composite -> neither
+        ScoreResponse nullComp = new ScoreResponse("s-null", "v-001", null, null, null, "now", "v1", List.of());
+        List<AdvisoryMessage> nullResult = service.generate(noRecall(), recentTimeline(), nullComp);
+        assertFalse(nullResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")));
+        assertFalse(nullResult.stream().anyMatch(m -> m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+
+        // between 60 and 90 (75.0) -> neither
+        ScoreResponse mid = new ScoreResponse("s-mid", "v-001", 75.0, 75.0, 75.0, "now", "v1", List.of());
+        List<AdvisoryMessage> midResult = service.generate(noRecall(), recentTimeline(), mid);
+        assertFalse(midResult.stream().anyMatch(m -> m.advisoryType().equals("LOW_RISK_SCORE")));
+        assertFalse(midResult.stream().anyMatch(m -> m.advisoryType().equals("SAFE_DRIVING_COMMENDATION")));
+    }
 }

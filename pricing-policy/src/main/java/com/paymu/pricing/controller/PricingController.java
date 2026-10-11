@@ -49,29 +49,30 @@ public class PricingController {
      */
     @PostMapping("/quote/{vehicleId}")
     public ResponseEntity<PremiumResponse> computeQuote(
-            @PathVariable String vehicleId,
+            @PathVariable UUID vehicleId,
             @RequestParam(required = false, name = "policy_id") String policyId) {
         
         String requestId = UUID.randomUUID().toString();
+        String vehicleIdStr = vehicleId.toString();
         
         if (policyId == null) {
-            policyId = orchestrator.fetchPolicyId(vehicleId);
+            policyId = orchestrator.fetchPolicyId(vehicleIdStr);
         }
         if (policyId == null) {
             policyId = UUID.randomUUID().toString(); // Fallback if identity-consent is missing or fails
-            log.info("No policy_id provided or found for vehicle {}, generated new one: {}", vehicleId, policyId);
+            log.info("No policy_id provided or found for vehicle {}, generated new one: {}", vehicleIdStr, policyId);
         }
 
-        log.info("Computing quote for vehicle {} (requestId={})", vehicleId, requestId);
+        log.info("Computing quote for vehicle {} (requestId={})", vehicleIdStr, requestId);
 
-        int vehicleAgeMonths = pricingEngine.getVehicleAgeMonths(vehicleId);
-        ScoreResponse score = orchestrator.fetchScore(vehicleId, vehicleAgeMonths);
+        int vehicleAgeMonths = pricingEngine.getVehicleAgeMonths(vehicleIdStr);
+        ScoreResponse score = orchestrator.fetchScore(vehicleIdStr, vehicleAgeMonths);
 
         if (score == null) {
-            log.info("No score available for vehicle {} — applying cold-start neutral pricing", vehicleId);
+            log.info("No score available for vehicle {} — applying cold-start neutral pricing", vehicleIdStr);
         }
 
-        PremiumResponse response = pricingEngine.compute(vehicleId, requestId, policyId, score);
+        PremiumResponse response = pricingEngine.compute(vehicleIdStr, requestId, policyId, score);
 
         return ResponseEntity.ok(response);
     }

@@ -151,10 +151,10 @@ public class MaintenanceController {
      * Per-vehicle service timeline: ordered history of all maintenance events.
      */
     @GetMapping("/timeline/{vehicleId}")
-    public ResponseEntity<ServiceTimeline> getTimeline(@PathVariable String vehicleId) {
-        ServiceTimeline timeline = store.getTimeline(vehicleId);
+    public ResponseEntity<ServiceTimeline> getTimeline(@PathVariable java.util.UUID vehicleId) {
+        ServiceTimeline timeline = store.getTimeline(vehicleId.toString());
         if (timeline == null) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.ok(new ServiceTimeline(vehicleId.toString(), 0, null, null, List.of()));
         }
         return ResponseEntity.ok(timeline);
     }

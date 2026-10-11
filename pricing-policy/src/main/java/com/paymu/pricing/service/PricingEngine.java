@@ -185,8 +185,8 @@ public class PricingEngine {
 
     // ---- Helpers ------------------------------------------------------------
 
-    private double depreciation(int ageYears) {
-        if (ageYears >= 5) return DEPRECIATION_BEYOND_5_YEARS;
+    double depreciation(int ageYears) {
+        if (ageYears > 5) return DEPRECIATION_BEYOND_5_YEARS;
         return DEPRECIATION_TABLE.getOrDefault(ageYears, DEPRECIATION_BEYOND_5_YEARS);
     }
 

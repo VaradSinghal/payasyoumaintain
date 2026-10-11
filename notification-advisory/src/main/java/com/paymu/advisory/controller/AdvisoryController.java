@@ -60,18 +60,19 @@ public class AdvisoryController {
      * it means the vehicle has no outstanding flags.</p>
      */
     @GetMapping("/advisories/{vehicleId}")
-    public ResponseEntity<AdvisoryResponse> getAdvisories(@PathVariable String vehicleId) {
-        log.info("Generating advisories for vehicle {}", vehicleId);
+    public ResponseEntity<AdvisoryResponse> getAdvisories(@PathVariable java.util.UUID vehicleId) {
+        String vehicleIdStr = vehicleId.toString();
+        log.info("Generating advisories for vehicle {}", vehicleIdStr);
 
-        JsonNode tripAggregates  = downstreamDataService.fetchTripAggregates(vehicleId);
-        ServiceTimeline timeline = downstreamDataService.fetchTimeline(vehicleId);
-        RecallStatus recall      = downstreamDataService.fetchRecallStatus(vehicleId);
-        ScoreResponse score      = downstreamDataService.fetchScore(vehicleId, tripAggregates, timeline, recall);
+        JsonNode tripAggregates  = downstreamDataService.fetchTripAggregates(vehicleIdStr);
+        ServiceTimeline timeline = downstreamDataService.fetchTimeline(vehicleIdStr);
+        RecallStatus recall      = downstreamDataService.fetchRecallStatus(vehicleIdStr);
+        ScoreResponse score      = downstreamDataService.fetchScore(vehicleIdStr, tripAggregates, timeline, recall);
 
         List<AdvisoryMessage> advisories = advisoryGeneratorService.generate(recall, timeline, score);
 
-        deliveryService.deliver(vehicleId, advisories);
+        deliveryService.deliver(vehicleIdStr, advisories);
 
-        return ResponseEntity.ok(new AdvisoryResponse(vehicleId, advisories, Instant.now().toString()));
+        return ResponseEntity.ok(new AdvisoryResponse(vehicleIdStr, advisories, Instant.now().toString()));
     }
 }

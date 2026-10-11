@@ -172,6 +172,32 @@ class PricingEngineTest {
         assertTrue(resp.scoreDetail().dataFlags().contains("usage_data_unavailable"));
     }
 
+    // ── Depreciation slab tests ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Depreciation slab covers every age from 0 to 6 correctly")
+    void depreciation_allAgesFrom0To6() {
+        assertEquals(0.95, engine.depreciation(0), 0.001, "Age 0 -> 0.95");
+        assertEquals(0.85, engine.depreciation(1), 0.001, "Age 1 -> 0.85");
+        assertEquals(0.80, engine.depreciation(2), 0.001, "Age 2 -> 0.80");
+        assertEquals(0.70, engine.depreciation(3), 0.001, "Age 3 -> 0.70");
+        assertEquals(0.60, engine.depreciation(4), 0.001, "Age 4 -> 0.60");
+        assertEquals(0.50, engine.depreciation(5), 0.001, "Age 5 -> 0.50");
+        assertEquals(0.40, engine.depreciation(6), 0.001, "Age 6 (>5) -> 0.40");
+        assertEquals(0.40, engine.depreciation(10), 0.001, "Age 10 (>5) -> 0.40");
+    }
+
+    @Test
+    @DisplayName("Vehicle d4e5... (age 5, exShowroom 900,000) base_premium is 11,700 (was 9,360)")
+    void d4e5_vehicleBasePremium_is11700() {
+        String d4e5VehicleId = "d4e5f6a7-b8c9-0123-defa-234567890123";
+        // Compute quote on cold-start (null score)
+        PremiumResponse resp = engine.compute(d4e5VehicleId, rid(), pid(), null);
+
+        // IDV = 900,000 * 0.50 = 450,000; Base premium = 450,000 * 0.026 = 11,700.00
+        assertEquals(11700.00, resp.basePremium(), 0.01, "Base premium for d4e5... must be 11,700.00");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static String rid() { return java.util.UUID.randomUUID().toString(); }

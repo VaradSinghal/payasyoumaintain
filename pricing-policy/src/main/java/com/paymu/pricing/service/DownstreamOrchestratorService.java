@@ -62,18 +62,26 @@ public class DownstreamOrchestratorService {
         JsonNode recallStatus = fetchJson(maintenanceUrl + "/recall-status/" + vehicleId, "recall status");
 
         // Build the ScoreRequest payload
+        String url = scoringUrl + "/score/" + vehicleId;
         try {
             var requestPayload = buildScorePayload(vehicleId, vehicleAgeMonths, timeline, tripAggregates, recallStatus);
             String payloadJson = objectMapper.writeValueAsString(requestPayload);
 
             String responseBody = restClient.post()
-                    .uri(scoringUrl + "/score/" + vehicleId)
+                    .uri(url)
                     .header("Content-Type", "application/json")
                     .body(payloadJson)
                     .retrieve()
                     .body(String.class);
 
             return objectMapper.readValue(responseBody, ScoreResponse.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.error("Client error (4xx) calling scorer at {}: status={} body={}", url, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            } else {
+                log.warn("Scorer server error (5xx) for vehicle {}: status={}", vehicleId, e.getStatusCode());
+            }
+            return null;
         } catch (RestClientException e) {
             log.warn("Risk scoring engine unavailable for vehicle {}: {}", vehicleId, e.getMessage());
             return null;
@@ -105,6 +113,13 @@ public class DownstreamOrchestratorService {
                     .body(String.class);
             if (body == null || body.isBlank()) return null;
             return objectMapper.readTree(body);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.error("Client error (4xx) calling {} from {}: status={} body={}", label, url, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            } else {
+                log.warn("Server error (5xx) calling {} from {}: status={}", label, url, e.getStatusCode());
+            }
+            return null;
         } catch (RestClientException e) {
             log.debug("Could not fetch {} from {}: {}", label, url, e.getMessage());
             return null;
@@ -130,14 +145,21 @@ public class DownstreamOrchestratorService {
             payload.put("service_timeline", objectMapper.convertValue(timeline, Object.class));
         }
 
-        // trip_aggregates: the telematics service returns a JSON array
+        // trip_aggregates: the telematics service returns a JSON array, forwarded as raw JsonNode
         if (tripAggregates != null && !tripAggregates.isNull() && tripAggregates.isArray()) {
-            payload.put("trip_aggregates", objectMapper.convertValue(tripAggregates, List.class));
+            payload.put("trip_aggregates", tripAggregates);
         }
 
-        // recall_status: the maintenance service always returns a recall status object
+        // recall_status: ensure availability is always populated (available / unavailable)
         if (recallStatus != null && !recallStatus.isNull()) {
-            payload.put("recall_status", objectMapper.convertValue(recallStatus, Object.class));
+            var recallMap = objectMapper.convertValue(recallStatus, java.util.Map.class);
+            if (!recallMap.containsKey("availability") || recallMap.get("availability") == null) {
+                var updated = new java.util.LinkedHashMap<>(recallMap);
+                updated.put("availability", "available");
+                payload.put("recall_status", updated);
+            } else {
+                payload.put("recall_status", recallMap);
+            }
         } else {
             payload.put("recall_status", java.util.Map.of(
                 "vehicle_id", vehicleId,

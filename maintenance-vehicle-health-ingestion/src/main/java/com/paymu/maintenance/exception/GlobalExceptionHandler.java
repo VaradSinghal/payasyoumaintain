@@ -10,7 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -19,6 +21,17 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String name = ex.getName();
+        String value = ex.getValue() != null ? ex.getValue().toString() : "null";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "INVALID_REQUEST");
+        body.put("message", "Invalid value '" + value + "' for parameter '" + name + "'.");
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.badRequest().body(body);
+    }
 
 
     @ExceptionHandler(SchemaValidationException.class)

@@ -119,4 +119,125 @@ class DownstreamOrchestratorServiceTest {
         assertTrue(result.dataFlags().contains("usage_data_unavailable"));
         server.verify();
     }
+
+    @Test
+    void fetchScore_forwardsTripAggregatesWithExtraFieldIntact() throws Exception {
+        String vehicleId = "v-789";
+        String extraAggregates = """
+            [
+              {
+                "trip_id": "t-789",
+                "vehicle_id": "v-789",
+                "hard_acceleration_count": 9,
+                "future_telematics_metric": 42.5
+              }
+            ]
+            """;
+
+        server.expect(requestTo("http://maintenance/timeline/" + vehicleId))
+                .andRespond(withSuccess("{\"events\": []}", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://telematics/aggregates/" + vehicleId))
+                .andRespond(withSuccess(extraAggregates, org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://maintenance/recall-status/" + vehicleId))
+                .andRespond(withSuccess("{\"vehicle_id\":\"v-789\",\"has_open_recall\":false}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        server.expect(requestTo("http://scoring/score/" + vehicleId))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = request.getBody().toString();
+                    com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(body);
+                    com.fasterxml.jackson.databind.JsonNode aggregates = root.get("trip_aggregates");
+                    assertNotNull(aggregates);
+                    assertTrue(aggregates.isArray());
+                    assertEquals(9, aggregates.get(0).get("hard_acceleration_count").asInt());
+                    assertEquals(42.5, aggregates.get(0).get("future_telematics_metric").asDouble());
+                })
+                .andRespond(withSuccess("{\"score_id\":\"s-extra\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        service.fetchScore(vehicleId, 24);
+        server.verify();
+    }
+
+    @Test
+    void fetchScore_emptyTimelineSendsServiceTimelineWithEmptyEvents() throws Exception {
+        String vehicleId = "v-empty";
+        String emptyTimeline = """
+            {
+                "vehicle_id": "v-empty",
+                "total_services": 0,
+                "latest_service_date": null,
+                "latest_odometer_km": null,
+                "events": []
+            }
+            """;
+
+        server.expect(requestTo("http://maintenance/timeline/" + vehicleId))
+                .andRespond(withSuccess(emptyTimeline, org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://telematics/aggregates/" + vehicleId))
+                .andRespond(withSuccess("[]", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://maintenance/recall-status/" + vehicleId))
+                .andRespond(withSuccess("{\"vehicle_id\":\"v-empty\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        server.expect(requestTo("http://scoring/score/" + vehicleId))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = request.getBody().toString();
+                    com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(body);
+                    com.fasterxml.jackson.databind.JsonNode timeline = root.get("service_timeline");
+                    assertNotNull(timeline, "service_timeline must be sent when empty timeline returned 200");
+                    assertEquals(0, timeline.get("total_services").asInt());
+                    assertTrue(timeline.get("events").isArray());
+                    assertEquals(0, timeline.get("events").size());
+                })
+                .andRespond(withSuccess("{\"score_id\":\"s-empty\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        service.fetchScore(vehicleId, 12);
+        server.verify();
+    }
+
+    @Test
+    void fetchScore_unreachableTimelineOmitsServiceTimeline() throws Exception {
+        String vehicleId = "v-unreach";
+
+        // Unreachable maintenance timeline (500 Server Error)
+        server.expect(requestTo("http://maintenance/timeline/" + vehicleId))
+                .andRespond(withServerError());
+        server.expect(requestTo("http://telematics/aggregates/" + vehicleId))
+                .andRespond(withSuccess("[]", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://maintenance/recall-status/" + vehicleId))
+                .andRespond(withSuccess("{\"vehicle_id\":\"v-unreach\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        server.expect(requestTo("http://scoring/score/" + vehicleId))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = request.getBody().toString();
+                    com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(body);
+                    assertNull(root.get("service_timeline"), "service_timeline must be omitted when maintenance is unreachable");
+                })
+                .andRespond(withSuccess("{\"score_id\":\"s-unreach\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        service.fetchScore(vehicleId, 12);
+        server.verify();
+    }
+
+    @Test
+    void fetchScore_clientError4xxLogsAndReturnsNullGracefully() {
+        String vehicleId = "v-4xx";
+        server.expect(requestTo("http://maintenance/timeline/" + vehicleId))
+                .andRespond(withSuccess("{\"events\": []}", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://telematics/aggregates/" + vehicleId))
+                .andRespond(withSuccess("[]", org.springframework.http.MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://maintenance/recall-status/" + vehicleId))
+                .andRespond(withSuccess("{\"vehicle_id\":\"v-4xx\"}", org.springframework.http.MediaType.APPLICATION_JSON));
+
+        server.expect(requestTo("http://scoring/score/" + vehicleId))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY)
+                        .body("{\"detail\": \"bad schema\"}")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON));
+
+        com.paymu.pricing.model.ScoreResponse score = service.fetchScore(vehicleId, 12);
+        assertNull(score);
+        server.verify();
+    }
 }

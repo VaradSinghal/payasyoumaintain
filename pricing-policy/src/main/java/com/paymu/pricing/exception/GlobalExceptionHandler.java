@@ -3,14 +3,27 @@ package com.paymu.pricing.exception;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String name = ex.getName();
+        String value = ex.getValue() != null ? ex.getValue().toString() : "null";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "INVALID_REQUEST");
+        body.put("message", "Invalid value '" + value + "' for parameter '" + name + "'.");
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.badRequest().body(body);
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadArgument(IllegalArgumentException ex) {
