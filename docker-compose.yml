@@ -92,8 +92,8 @@ services:
     build:
       context: .
       dockerfile: identity-consent/Dockerfile
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -112,8 +112,8 @@ services:
     build:
       context: .
       dockerfile: telematics-usage-ingestion/Dockerfile
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -129,8 +129,8 @@ services:
     build:
       context: .
       dockerfile: maintenance-vehicle-health-ingestion/Dockerfile
-    ports:
-      - "8083:8083"
+    expose:
+      - "8083"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -148,8 +148,8 @@ services:
     build:
       context: .
       dockerfile: risk-scoring-engine/Dockerfile
-    ports:
-      - "8084:8084"
+    expose:
+      - "8084"
     restart: unless-stopped
     # The scoring engine is stateless — it only needs to be reachable itself.
     # No hard depends_on on ingestion services since it receives data as input.
@@ -168,8 +168,8 @@ services:
     build:
       context: .
       dockerfile: pricing-policy/Dockerfile
-    ports:
-      - "8085:8085"
+    expose:
+      - "8085"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -188,8 +188,8 @@ services:
     build:
       context: .
       dockerfile: claims-verification/Dockerfile
-    ports:
-      - "8086:8086"
+    expose:
+      - "8086"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -205,8 +205,8 @@ services:
     build:
       context: .
       dockerfile: notification-advisory/Dockerfile
-    ports:
-      - "8087:8087"
+    expose:
+      - "8087"
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -229,21 +229,8 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
-    depends_on:
-      identity-consent:
-        condition: service_healthy
-      pricing-policy:
-        condition: service_healthy
-      claims-verification:
-        condition: service_healthy
-      notification-advisory:
-        condition: service_healthy
-      maintenance-vehicle-health-ingestion:
-        condition: service_healthy
-      telematics-usage-ingestion:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health | grep -q UP || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health | grep -q UP || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
