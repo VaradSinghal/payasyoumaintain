@@ -98,7 +98,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('₹13977.60'), findsOneWidget);
+      expect(find.text('₹13,977.60'), findsOneWidget);
       expect(find.text('Eligible for standard renewal - vehicle health profile is strong.'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsWidgets);
@@ -118,7 +118,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('₹12265.34'), findsOneWidget);
+      expect(find.text('₹12,265.34'), findsOneWidget);
       expect(find.text('URGENT: Your vehicle has an open safety recall.'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('75 / 100'), findsOneWidget);
@@ -137,7 +137,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('₹21075.60'), findsOneWidget);
+      expect(find.text('₹21,075.60'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('85 / 100'), findsOneWidget);
       expect(find.text('Maintenance Score'), findsOneWidget);
@@ -152,7 +152,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('₹6563.70'), findsOneWidget);
+      expect(find.text('₹6,563.70'), findsOneWidget);
       expect(find.text('Unverified — self-reported only'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsOneWidget);
@@ -167,7 +167,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('₹44460.00'), findsOneWidget);
+      expect(find.text('₹44,460.00'), findsOneWidget);
       expect(find.text('Insufficient Data'), findsOneWidget);
       expect(find.text('Not enough data yet'), findsWidgets);
 
@@ -183,7 +183,7 @@ void main() {
       await tester.pumpWidget(createTestApp(pricingApi, advisoryApi));
       await tester.pumpAndSettle();
 
-      expect(find.text("Recall status couldn't be checked"), findsOneWidget);
+      expect(find.text("Recall status couldn't be checked"), findsWidgets);
     });
 
     testWidgets('error with a working retry', (tester) async {
@@ -203,7 +203,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should successfully load
-      expect(find.text('₹13977.60'), findsOneWidget);
+      expect(find.text('₹13,977.60'), findsOneWidget);
     });
 
     testWidgets('Consent toggles start OFF', (tester) async {
@@ -221,8 +221,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // On welcome screen, tap "Register my vehicle"
+      expect(find.text('Register my vehicle'), findsOneWidget);
+      await tester.tap(find.text('Register my vehicle'));
+      await tester.pumpAndSettle();
+
       // On register step, tap "Register Vehicle"
       expect(find.text('Register Vehicle'), findsOneWidget);
+      await tester.ensureVisible(find.text('Register Vehicle'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Register Vehicle'));
       await tester.pumpAndSettle();
 

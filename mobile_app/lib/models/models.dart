@@ -1,3 +1,4 @@
+export 'demo_scenario.dart';
 class VehicleRegistration {
   final String? vehicleId;
   final String? policyId;

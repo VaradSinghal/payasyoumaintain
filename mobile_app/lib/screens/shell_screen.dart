@@ -16,14 +16,18 @@ class ShellScreen extends ConsumerWidget {
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'reset') {
+              if (value == 'reset' || value == 'switch_vehicle') {
                 ref.read(authProvider.notifier).logout();
               }
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
+                value: 'switch_vehicle',
+                child: Text('Switch vehicle'),
+              ),
+              const PopupMenuItem(
                 value: 'reset',
-                child: Text('Reset demo session'),
+                child: Text('Reset session'),
               ),
             ],
           ),

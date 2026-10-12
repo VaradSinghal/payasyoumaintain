@@ -1,0 +1,138 @@
+[
+  {
+    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "display_name": "The Model Citizen",
+    "descriptor": "Mid-segment sedan \u00b7 2 years",
+    "headline": "Serviced on time, driven carefully, and it shows.",
+    "talking_point": "Manufacturer-verified service records and calm driving earn the best case: multiplier 0.700 on top of a 20% no-claim bonus.",
+    "expected": {
+      "usage_score": 100.0,
+      "maintenance_score": 100.0,
+      "composite_score": 100.0,
+      "dynamic_multiplier": 0.7,
+      "base_premium": 24960.0,
+      "final_premium": 13977.6,
+      "health_status": "scored",
+      "health_confidence": "verified",
+      "has_open_recall": false,
+      "data_flags": [],
+      "advisory_types": [
+        "SAFE_DRIVING_COMMENDATION"
+      ]
+    },
+    "suggested_claim": {
+      "claimed_cause": "mechanical_failure",
+      "expected_triage_decision": "MANUAL_REVIEW"
+    }
+  },
+  {
+    "vehicle_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "display_name": "The Overdue Hatchback",
+    "descriptor": "Compact hatchback \u00b7 4 years",
+    "headline": "800 days since the last service, an open recall, and harsh driving.",
+    "talking_point": "The score tells the owner exactly what to fix; nothing here is a denial. Surcharge multiplier 1.092.",
+    "expected": {
+      "usage_score": 75.0,
+      "maintenance_score": 15.0,
+      "composite_score": 51.0,
+      "dynamic_multiplier": 1.092,
+      "base_premium": 12480.0,
+      "final_premium": 12265.34,
+      "health_status": "scored",
+      "health_confidence": "verified",
+      "has_open_recall": true,
+      "data_flags": [],
+      "advisory_types": [
+        "OPEN_RECALL",
+        "OVERDUE_SERVICE",
+        "LOW_RISK_SCORE"
+      ]
+    },
+    "suggested_claim": {
+      "claimed_cause": "mechanical_failure",
+      "expected_triage_decision": "MANUAL_REVIEW"
+    }
+  },
+  {
+    "vehicle_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+    "display_name": "The Conflicting Records",
+    "descriptor": "Premium SUV \u00b7 3 years",
+    "headline": "Two service records that can't both be true.",
+    "talking_point": "A dealer record and a self-uploaded record whose odometer readings contradict each other. The engine trusts the verified record and flags the conflict instead of silently choosing.",
+    "expected": {
+      "usage_score": 85.0,
+      "maintenance_score": 100.0,
+      "composite_score": 91.0,
+      "dynamic_multiplier": 0.772,
+      "base_premium": 27300.0,
+      "final_premium": 21075.6,
+      "health_status": "scored",
+      "health_confidence": "verified",
+      "has_open_recall": false,
+      "data_flags": [
+        "conflicting_records_detected"
+      ],
+      "advisory_types": [
+        "SAFE_DRIVING_COMMENDATION"
+      ]
+    },
+    "suggested_claim": {
+      "claimed_cause": "collision",
+      "expected_triage_decision": "STRAIGHT_THROUGH_PROCESSING"
+    }
+  },
+  {
+    "vehicle_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    "display_name": "The Self-Reporter",
+    "descriptor": "Mid-range sedan \u00b7 5 years",
+    "headline": "Only self-uploaded records.",
+    "talking_point": "Self-reported data can never earn a top score: capped at 85 and labelled Unverified until a verified source confirms it.",
+    "expected": {
+      "usage_score": 100.0,
+      "maintenance_score": 85.0,
+      "composite_score": 94.0,
+      "dynamic_multiplier": 0.748,
+      "base_premium": 11700.0,
+      "final_premium": 6563.7,
+      "health_status": "scored",
+      "health_confidence": "unverified_self_reported",
+      "has_open_recall": false,
+      "data_flags": [],
+      "advisory_types": [
+        "SAFE_DRIVING_COMMENDATION"
+      ]
+    },
+    "suggested_claim": {
+      "claimed_cause": "theft",
+      "expected_triage_decision": "STRAIGHT_THROUGH_PROCESSING"
+    }
+  },
+  {
+    "vehicle_id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+    "display_name": "Brand New",
+    "descriptor": "Luxury SUV \u00b7 new",
+    "headline": "No history yet.",
+    "talking_point": "With no trips and no service records we say 'not enough data', not 100 and not 0, keep the neutral 1.0 multiplier and nudge a baseline inspection.",
+    "expected": {
+      "usage_score": null,
+      "maintenance_score": null,
+      "composite_score": null,
+      "dynamic_multiplier": 1.0,
+      "base_premium": 44460.0,
+      "final_premium": 44460.0,
+      "health_status": "insufficient_data",
+      "health_confidence": null,
+      "has_open_recall": false,
+      "data_flags": [
+        "usage_data_unavailable"
+      ],
+      "advisory_types": [
+        "NO_SERVICE_RECORD"
+      ]
+    },
+    "suggested_claim": {
+      "claimed_cause": "collision",
+      "expected_triage_decision": "STRAIGHT_THROUGH_PROCESSING"
+    }
+  }
+]
