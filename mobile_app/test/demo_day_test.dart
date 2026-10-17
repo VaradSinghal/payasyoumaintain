@@ -488,7 +488,7 @@ void main() {
       // Consent view: verify honest copy
       expect(find.text('Data Sharing Preferences'), findsOneWidget);
       expect(
-        find.text('Your choice is recorded. Personalised pricing based on these settings is coming in the next release.'),
+        find.text('Off: you pay the standard premium. On: your premium can reflect your driving and servicing, and it can go down or up. You can change this any time in Privacy & tracking.'),
         findsOneWidget,
       );
     });

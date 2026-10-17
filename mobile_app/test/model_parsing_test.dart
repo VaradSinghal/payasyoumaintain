@@ -207,5 +207,62 @@ void main() {
       expect(ex400.error, 'INVALID_REQUEST');
       expect(ex400.message, contains('Invalid value'));
     });
+
+    test('Opted out quotes parse accurately with not_evaluated health status', () {
+      final qA1b2Off = QuoteResponse.fromJson(loadJson('quote_a1b2_opted_out.json'));
+      expect(qA1b2Off.scoreDetail?.healthStatus, 'not_evaluated');
+      expect(qA1b2Off.scoreDetail?.usageScore, isNull);
+      expect(qA1b2Off.scoreDetail?.maintenanceScore, isNull);
+      expect(qA1b2Off.scoreDetail?.compositeScore, isNull);
+      expect(qA1b2Off.scoreDetail?.hasOpenRecall, isNull);
+      expect(qA1b2Off.scoreDetail?.dataFlags, contains('consent_not_given_usage'));
+      expect(qA1b2Off.scoreDetail?.dataFlags, contains('consent_not_given_maintenance'));
+      expect(qA1b2Off.discountBreakdown.any((d) => d.reason == 'standard_pricing_no_consent'), isTrue);
+      expect(qA1b2Off.scoreDetail?.contributingFactors.any((f) => f.factorName == 'tracking_off'), isTrue);
+
+      final qNewOff = QuoteResponse.fromJson(loadJson('quote_new_reg_opted_out.json'));
+      expect(qNewOff.scoreDetail?.healthStatus, 'not_evaluated');
+      expect(qNewOff.discountBreakdown.any((d) => d.reason == 'standard_pricing_no_consent'), isTrue);
+
+      final qUnavail = QuoteResponse.fromJson(loadJson('quote_consent_status_unavailable.json'));
+      expect(qUnavail.scoreDetail?.healthStatus, 'not_evaluated');
+      expect(qUnavail.scoreDetail?.dataFlags, contains('consent_status_unavailable'));
+    });
+
+    test('Opted out and opted in advisories fixtures parse correctly', () {
+      final advA1b2Off = AdvisoryResponse.fromJson(loadJson('advisories_a1b2_opted_out.json'));
+      expect(advA1b2Off.advisories, hasLength(1));
+      expect(advA1b2Off.advisories.first.advisoryType, 'TRACKING_DISABLED');
+      expect(advA1b2Off.advisories.first.actionUrl, 'https://paym.app/settings/consent');
+
+      final advNewOff = AdvisoryResponse.fromJson(loadJson('advisories_new_reg_opted_out.json'));
+      expect(advNewOff.advisories.first.advisoryType, 'TRACKING_DISABLED');
+
+      final advNewIn = AdvisoryResponse.fromJson(loadJson('advisories_new_reg_opted_in.json'));
+      expect(advNewIn.advisories.first.advisoryType, 'NO_SERVICE_RECORD');
+    });
+
+    test('New registration and consent toggles parse correctly', () {
+      final regNew = VehicleRegistration.fromJson(loadJson('registration_new_opted_out_201.json'));
+      expect(regNew.vehicleId, isNotNull);
+      expect(regNew.policyId, isNotNull);
+      expect(regNew.kycStatus, 'VERIFIED');
+
+      final getOff = ConsentRecord.fromJson(loadJson('consent_get_opted_out_200.json'));
+      expect(getOff.usageTrackingOptIn, isFalse);
+      expect(getOff.maintenanceTrackingOptIn, isFalse);
+
+      final putOff = ConsentRecord.fromJson(loadJson('consent_put_opted_out_200.json'));
+      expect(putOff.usageTrackingOptIn, isFalse);
+      expect(putOff.maintenanceTrackingOptIn, isFalse);
+
+      final getIn = ConsentRecord.fromJson(loadJson('consent_get_opted_in_200.json'));
+      expect(getIn.usageTrackingOptIn, isTrue);
+      expect(getIn.maintenanceTrackingOptIn, isTrue);
+
+      final putIn = ConsentRecord.fromJson(loadJson('consent_put_opted_in_200.json'));
+      expect(putIn.usageTrackingOptIn, isTrue);
+      expect(putIn.maintenanceTrackingOptIn, isTrue);
+    });
   });
 }
