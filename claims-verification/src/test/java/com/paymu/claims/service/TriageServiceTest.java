@@ -312,4 +312,44 @@ class TriageServiceTest {
                     "Cause " + cause + " should be STP regardless of recall status");
         }
     }
+
+    @Test
+    @DisplayName("Correctly bound claim is unchanged for all six claimed causes")
+    void allSixCauses_correctlyBound_behaviorUnchanged() {
+        for (ClaimedCause cause : ClaimedCause.values()) {
+            FnolRequest request = fnol(cause);
+            // With policyBindingUnverified = false
+            TriageService.TriageResult result = triageService.triage(request, null, noRecall(), false);
+            if (cause == ClaimedCause.MECHANICAL_FAILURE) {
+                assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+            } else {
+                assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+            }
+            assertFalse(result.reasons().contains("policy_binding_unverified"));
+        }
+    }
+
+    @Test
+    @DisplayName("Unverified policy binding path forces MANUAL_REVIEW even for 'collision'")
+    void unverifiedPath_forcesManualReview_forCollision() {
+        FnolRequest request = fnol(ClaimedCause.COLLISION);
+        TriageService.TriageResult result = triageService.triage(request, null, null, true);
+
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertTrue(result.reasons().contains("policy_binding_unverified"));
+    }
+
+    @Test
+    @DisplayName("Unverified policy binding forces MANUAL_REVIEW for all six claimed causes")
+    void unverifiedPath_forcesManualReview_forAllCauses() {
+        for (ClaimedCause cause : ClaimedCause.values()) {
+            FnolRequest request = fnol(cause);
+            TriageService.TriageResult result = triageService.triage(request, null, null, true);
+
+            assertEquals(TriageDecision.MANUAL_REVIEW, result.decision(),
+                    "Unverified policy binding must force MANUAL_REVIEW for " + cause);
+            assertTrue(result.reasons().contains("policy_binding_unverified"),
+                    "Triage reasons must include 'policy_binding_unverified' for " + cause);
+        }
+    }
 }

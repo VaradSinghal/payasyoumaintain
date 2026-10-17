@@ -195,6 +195,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       MAINTENANCE_URL: http://maintenance-vehicle-health-ingestion:8083/api/v1
+      IDENTITY_URL:    http://identity-consent:8081/api/v1
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8086/api/v1/actuator/health | grep -q UP || exit 1"]
       interval: 15s
