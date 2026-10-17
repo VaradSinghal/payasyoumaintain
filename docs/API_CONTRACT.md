@@ -4,21 +4,54 @@
 This document defines the canonical API contract for the PayAsUMaintain backend services. All microservices enforce a consistent `/api/v1` base path prefix. The APIs use `snake_case` JSON serialization globally.
 
 ### Mobile & Web Client Integration (API Gateway)
-All mobile and web clients connect through the single-entry **API Gateway** on port **8080**:
+All mobile and web clients connect through the single-entry **Hardened API Gateway** on port **8080**:
 - **Gateway Base URL (Web / Localhost)**: `http://localhost:8080`
 - **Gateway Base URL (Android Emulator)**: `http://10.0.2.2:8080`
 - **Gateway Base URL (Physical Devices)**: `http://<HOST_IP>:8080`
 
-#### Path Prefixes (Gateway strips prefix before proxying to `/api/v1/...`):
-- `/identity/*` &rarr; `identity-consent:8081` (`/api/v1/...`)
-- `/telematics/*` &rarr; `telematics-usage-ingestion:8082` (`/api/v1/...`)
-- `/maintenance/*` &rarr; `maintenance-vehicle-health-ingestion:8083` (`/api/v1/...`)
-- `/pricing/*` &rarr; `pricing-policy:8085` (`/api/v1/...`)
-- `/claims/*` &rarr; `claims-verification:8086` (`/api/v1/...`)
-- `/advisory/*` &rarr; `notification-advisory:8087` (`/api/v1/...`)
-*(Note: `risk-scoring-engine:8084` is internal-only and not exposed directly through the gateway).*
+By default, the gateway on port `8080` is the **only** published application port on the host (backend services use Docker `expose`). Direct ports `8081`–`8087` can be published for debugging using `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`.
 
-*Direct service ports (8081–8087) remain published for local debugging and test isolation.*
+#### Correlation & Headers
+- `X-Request-ID`: Nginx sets upstream `X-Request-ID` from `$request_id`, returns it on every response header, and logs it in the access log.
+- `CORS`: Permissive CORS headers are enabled for Flutter web clients (`Access-Control-Allow-Origin: *`, `OPTIONS` preflight returns 204).
+
+#### Health Routes
+- `GET /health` &rarr; Gateway health status (`{"status":"UP","gateway":"paymu-gateway"}`)
+- `GET /health/identity` &rarr; `http://identity-consent:8081/api/v1/actuator/health`
+- `GET /health/telematics` &rarr; `http://telematics-usage-ingestion:8082/api/v1/actuator/health`
+- `GET /health/maintenance` &rarr; `http://maintenance-vehicle-health-ingestion:8083/api/v1/actuator/health`
+- `GET /health/pricing` &rarr; `http://pricing-policy:8085/api/v1/actuator/health`
+- `GET /health/claims` &rarr; `http://claims-verification:8086/api/v1/actuator/health`
+- `GET /health/advisory` &rarr; `http://notification-advisory:8087/api/v1/actuator/health`
+- `GET /health/scoring` &rarr; `http://risk-scoring-engine:8084/health` *(Risk scoring engine is reachable through the gateway ONLY at `/health/scoring`)*
+
+#### Explicit Public Allowlist (Anchored & Method-Restricted)
+Requests matching the allowlist have their gateway service prefix stripped before forwarding upstream (`/service/api/v1/...` &rarr; `/api/v1/...`):
+- `POST /identity/api/v1/vehicles` &rarr; Register vehicle
+- `GET /identity/api/v1/vehicles/{id}` &rarr; Get vehicle registration
+- `GET /identity/api/v1/vehicles/{id}/consent` &rarr; Get consent status
+- `PUT /identity/api/v1/vehicles/{id}/consent` &rarr; Update consent status
+- `POST /pricing/api/v1/quote/{id}` &rarr; Calculate quote
+- `GET /advisory/api/v1/advisories/{id}` &rarr; Fetch prioritized advisories
+- `POST /claims/api/v1/fnol` &rarr; Submit first notice of loss
+- `GET /claims/api/v1/claims/{id}` &rarr; Get claim status
+- `GET /maintenance/api/v1/timeline/{id}` &rarr; Get maintenance timeline
+- `POST /maintenance/api/v1/dtc-readings` &rarr; Ingest DTC reading
+- `GET /maintenance/api/v1/dtc-readings/{id}/latest` &rarr; Get latest DTC reading
+- `GET /maintenance/api/v1/dtc-readings/{id}/history` &rarr; Get DTC reading history
+- `GET /telematics/api/v1/aggregates/{id}` &rarr; Get trip aggregates
+
+All other paths (including raw events, synthetic generation, recall queries, internal actuators, and scoring paths) or disallowed HTTP methods return `404 NOT_FOUND` JSON.
+
+#### Gateway Error Formatting
+All gateway-generated errors are returned as JSON with `Content-Type: application/json`:
+- Upstream connection failures, 502, 503, 504 &rarr; `503 SERVICE_UNAVAILABLE`
+  `{"error":"SERVICE_UNAVAILABLE","message":"Upstream service temporarily unavailable","timestamp":"<ISO8601>"}`
+- Unknown paths or disallowed HTTP methods &rarr; `404 NOT_FOUND`
+  `{"error":"NOT_FOUND","message":"Resource not found or method not allowed","timestamp":"<ISO8601>"}`
+- Blocked endpoints &rarr; `403 FORBIDDEN`
+  `{"error":"FORBIDDEN","message":"Ingestion, seeding and internal endpoints are blocked by gateway","timestamp":"<ISO8601>"}`
+- Upstream application 4xx errors (e.g. 400 Bad Request) pass through unintercepted with their original application JSON bodies.
 
 ---
 

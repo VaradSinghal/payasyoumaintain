@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Pay As You Maintain — Docker Compose Development Override
+#  Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+#  Re-publishes internal service ports 8081-8087 to the host for local debugging
+#  and test isolation (e.g. running e2e_smoke.py directly against microservices).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  identity-consent:
+    ports:
+      - "8081:8081"
+
+  telematics-usage-ingestion:
+    ports:
+      - "8082:8082"
+
+  maintenance-vehicle-health-ingestion:
+    ports:
+      - "8083:8083"
+
+  risk-scoring-engine:
+    ports:
+      - "8084:8084"
+
+  pricing-policy:
+    ports:
+      - "8085:8085"
+
+  claims-verification:
+    ports:
+      - "8086:8086"
+
+  notification-advisory:
+    ports:
+      - "8087:8087"
