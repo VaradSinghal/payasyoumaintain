@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/dashboard_provider.dart';
 import '../models/models.dart';
+import '../providers/auth_provider.dart';
+import '../providers/dashboard_provider.dart';
+import '../utils/currency_formatter.dart';
 import '../widgets/shared_widgets.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -11,6 +13,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboardAsync = ref.watch(dashboardProvider);
+    final authState = ref.watch(authProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard')),
@@ -22,7 +25,7 @@ class DashboardScreen extends ConsumerWidget {
               await ref.read(dashboardProvider.future);
             } catch (_) {}
           },
-          child: _buildContent(context, data),
+          child: _buildContent(context, data, authState),
         ),
         loading: () => const AppLoading(message: 'Loading dashboard...'),
         error: (error, stack) => AppError(
@@ -33,16 +36,23 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, DashboardData data) {
+  Widget _buildContent(BuildContext context, DashboardData data, AuthState authState) {
     final quote = data.quote;
     final advisories = data.advisories;
     final scoreDetail = quote.scoreDetail;
 
+    final demoScenario = authState.vehicleId != null
+        ? DemoScenario.findByVehicleId(authState.vehicleId!)
+        : null;
+
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
+        if (authState.isDemo && demoScenario != null)
+          _buildAboutDemoVehicle(demoScenario),
+
         if (scoreDetail != null) _buildRecallBanner(scoreDetail.hasOpenRecall),
-        
+
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -56,7 +66,7 @@ class DashboardScreen extends ConsumerWidget {
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
-                      '₹${quote.finalPremium.toStringAsFixed(2)}',
+                      CurrencyFormatter.format(quote.finalPremium, currency: quote.currency),
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             color: Theme.of(context).primaryColor,
                             fontWeight: FontWeight.bold,
@@ -75,6 +85,7 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                   ],
                 ),
+                _buildExplainMyPremium(context, quote),
               ],
             ),
           ),
@@ -115,6 +126,153 @@ class DashboardScreen extends ConsumerWidget {
         _buildAdvisoriesList(advisories.advisories),
       ],
     );
+  }
+
+  Widget _buildAboutDemoVehicle(DemoScenario scenario) {
+    return Card(
+      color: Colors.blue.shade50,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        leading: const Icon(Icons.directions_car, color: Colors.blue),
+        title: Text('About this demo vehicle (${scenario.displayName})',
+            style: const TextStyle(fontWeight: FontWeight.bold)),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  scenario.headline,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  scenario.talkingPoint,
+                  style: TextStyle(color: Colors.grey.shade800, height: 1.3),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExplainMyPremium(BuildContext context, QuoteResponse quote) {
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      elevation: 0,
+      color: Colors.grey.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+        title: const Text(
+          'Explain my premium',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (quote.basePremium != null)
+                  _buildPremiumDetailRow(
+                    'Base premium',
+                    CurrencyFormatter.format(quote.basePremium, currency: quote.currency),
+                  ),
+                ...quote.discountBreakdown.map((d) {
+                  final label = _labelForDiscountReason(d.reason);
+                  final sign = d.adjustmentPct > 0 ? '+' : '';
+                  final pct = '$sign${d.adjustmentPct.toStringAsFixed(1)}%';
+                  return _buildPremiumDetailRow(label, pct);
+                }),
+                _buildPremiumDetailRow(
+                  'Multiplier',
+                  quote.dynamicMultiplier.toStringAsFixed(3),
+                ),
+                const Divider(),
+                _buildPremiumDetailRow(
+                  'Final premium',
+                  CurrencyFormatter.format(quote.finalPremium, currency: quote.currency),
+                  isBold: true,
+                ),
+                if (quote.methodologyNote != null && quote.methodologyNote!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    quote.methodologyNote!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumDetailRow(String label, String value, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _labelForDiscountReason(String reason) {
+    switch (reason) {
+      case 'no_claim_bonus':
+        return 'No-claim bonus';
+      case 'risk_score_discount':
+        return 'Good vehicle and driving record';
+      case 'risk_score_surcharge':
+        return 'Risk adjustment';
+      case 'cold_start_neutral':
+        return 'New policy, standard rate';
+      default:
+        return reason;
+    }
+  }
+
+  String _labelForDataFlag(String flag) {
+    switch (flag) {
+      case 'conflicting_records_detected':
+        return 'Conflicting service records found; the manufacturer-verified record was used';
+      case 'usage_data_unavailable':
+        return 'No trip data yet';
+      case 'recall_status_unavailable':
+        return "Recall status couldn't be checked";
+      default:
+        return flag;
+    }
   }
 
   Widget _buildRecallBanner(bool? hasOpenRecall) {
@@ -213,6 +371,23 @@ class DashboardScreen extends ConsumerWidget {
                   ),
               ],
             ),
+            if (detail.dataFlags.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8.0,
+                runSpacing: 6.0,
+                children: detail.dataFlags.map((flag) {
+                  return Chip(
+                    label: Text(
+                      _labelForDataFlag(flag),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Colors.grey.shade100,
+                    side: BorderSide(color: Colors.grey.shade300),
+                  );
+                }).toList(),
+              ),
+            ],
             const SizedBox(height: 16),
             _buildScoreBar('Usage Score', detail.usageScore),
             const SizedBox(height: 16),
