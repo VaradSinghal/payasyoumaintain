@@ -27,7 +27,7 @@ public class IdentityConsentController {
     @PostMapping("/vehicles")
     public ResponseEntity<VehicleRegistration> registerVehicle(@Valid @RequestBody VehicleRegistrationRequest request) {
         VehicleRegistration registration = registrationService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(registration);
+        return ResponseEntity.status(HttpStatus.CREATED).body(registration.mask());
     }
 
     @GetMapping("/vehicles/{vehicleId}")
@@ -40,7 +40,7 @@ public class IdentityConsentController {
                     "timestamp", Instant.now().toString()
             ));
         }
-        return ResponseEntity.ok(registration);
+        return ResponseEntity.ok(registration.mask());
     }
 
     @GetMapping("/vehicles/{vehicleId}/consent")

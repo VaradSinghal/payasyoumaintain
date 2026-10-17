@@ -240,4 +240,110 @@ class DownstreamOrchestratorServiceTest {
         assertNull(score);
         server.verify();
     }
+
+    @Test
+    void deserializesRealConsentResponseBody() throws Exception {
+        String json = """
+            {
+                "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "usage_tracking_opt_in": true,
+                "maintenance_tracking_opt_in": false,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        com.paymu.pricing.model.ConsentResponse response = objectMapper.readValue(json, com.paymu.pricing.model.ConsentResponse.class);
+        assertEquals("a1b2c3d4-e5f6-7890-abcd-ef1234567890", response.vehicleId());
+        assertTrue(response.usageTrackingOptIn());
+        assertFalse(response.maintenanceTrackingOptIn());
+        assertEquals("2026-10-17T10:00:00Z", response.updatedAt());
+    }
+
+    @Test
+    void evaluateConsent_bothOptInsTrue_returnsPermitted() {
+        String vehicleId = "v-both-true";
+        String json = """
+            {
+                "vehicle_id": "v-both-true",
+                "usage_tracking_opt_in": true,
+                "maintenance_tracking_opt_in": true,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withSuccess(json, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertTrue(eval.isPermitted());
+        assertTrue(eval.dataFlags().isEmpty());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_usageFalse_flagsMissingUsageConsent() {
+        String vehicleId = "v-usage-false";
+        String json = """
+            {
+                "vehicle_id": "v-usage-false",
+                "usage_tracking_opt_in": false,
+                "maintenance_tracking_opt_in": true,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withSuccess(json, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertEquals(java.util.List.of("consent_not_given_usage"), eval.dataFlags());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_maintenanceFalse_flagsMissingMaintenanceConsent() {
+        String vehicleId = "v-maint-false";
+        String json = """
+            {
+                "vehicle_id": "v-maint-false",
+                "usage_tracking_opt_in": true,
+                "maintenance_tracking_opt_in": false,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withSuccess(json, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertEquals(java.util.List.of("consent_not_given_maintenance"), eval.dataFlags());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_404_flagsVehicleNotRegistered() {
+        String vehicleId = "v-unreg";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertEquals(java.util.List.of("vehicle_not_registered"), eval.dataFlags());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_500_flagsConsentStatusUnavailableFailClosed() {
+        String vehicleId = "v-500";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withServerError());
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertEquals(java.util.List.of("consent_status_unavailable"), eval.dataFlags());
+        assertTrue(eval.isUnavailable());
+        server.verify();
+    }
 }

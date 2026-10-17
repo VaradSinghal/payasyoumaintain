@@ -18,7 +18,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
 | [`score.schema.json`](schemas/score.schema.json) | v1.2.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
-| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.1.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
+| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.2.0 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 | [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
 | [`trip-aggregate.schema.json`](schemas/trip-aggregate.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, pricing-policy, notification-advisory | Computed per-trip aggregates (speed, distance, harsh braking, hard acceleration) |
 
@@ -55,6 +55,7 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-11 | `score.schema.json` | v1.1.0 | v1.2.0 | **Minor** (type-widening, consumer-breaking) | `usage_score` widened from non-null to nullable; `composite_score` updated to require both component scores. Previously `usage_score` was a required number, which meant "unknown" was represented as a neutral 100. `usage_score` is now `null` when no trip data exists, `composite_score` is `null` unless BOTH `usage_score` and `maintenance_score` are non-null, and `usage_data_unavailable` added to `data_flags`. |
 | 2026-10-11 | `premium-response.schema.json` | v1.0.1 | v1.1.0 | **Minor** (type-widening) | `usage_score`, `maintenance_score`, and `composite_score` inside `score_detail` widened from non-null to nullable to reflect scorer null semantics. |
 | 2026-10-11 | `trip-aggregate.schema.json` | — | v1.0.0 | **New** | Introduced structured trip aggregate schema. Additive patch bump. Documents `hard_acceleration_count` as events with acceleration_ms2 at or above the configured threshold. |
+| 2026-10-17 | `premium-response.schema.json` | v1.1.0 | v1.2.0 | **Minor** (enum-widening, consumer-breaking) | Widened score_detail.health_status enum with 'not_evaluated' and documented consent and registration data_flags (consent_not_given_usage, consent_not_given_maintenance, vehicle_not_registered, consent_status_unavailable). Widening an enum is breaking for strict consumers that validate incoming payloads against closed enums. |
 
 ### Null semantics in `score.schema.json` (v1.2.0)
 

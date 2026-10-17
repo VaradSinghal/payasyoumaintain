@@ -47,6 +47,11 @@ public class RegistrationService {
     public VehicleRegistration getRegistration(String vehicleId) {
         return registrations.get(vehicleId);
     }
+
+    public void seedVehicle(VehicleRegistration registration, ConsentRecord consent) {
+        registrations.put(registration.vehicleId(), registration);
+        consents.put(registration.vehicleId(), consent);
+    }
     
     public ConsentRecord getConsent(String vehicleId) {
         return consents.get(vehicleId);

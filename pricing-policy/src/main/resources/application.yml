@@ -6,6 +6,10 @@ server:
 spring:
   application:
     name: pricing-policy
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 2s
   jackson:
     property-naming-strategy: SNAKE_CASE
     serialization:

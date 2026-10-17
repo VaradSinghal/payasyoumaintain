@@ -63,7 +63,18 @@ public class PricingController {
             log.info("No policy_id provided or found for vehicle {}, generated new one: {}", vehicleIdStr, policyId);
         }
 
-        log.info("Computing quote for vehicle {} (requestId={})", vehicleIdStr, requestId);
+        // Enforce tracking consent check before querying any tracking/service data
+        com.paymu.pricing.model.ConsentEvaluation consent = orchestrator.evaluateConsent(vehicleIdStr);
+        if (!consent.isPermitted()) {
+            log.info("Consent not established for vehicle {} (flags={}) — applying static standard pricing",
+                    vehicleIdStr, consent.dataFlags());
+            PremiumResponse staticResponse = pricingEngine.computeStatic(
+                    vehicleIdStr, requestId, policyId, consent.dataFlags(), consent.isUnavailable()
+            );
+            return ResponseEntity.ok(staticResponse);
+        }
+
+        log.info("Computing dynamic quote for vehicle {} (requestId={})", vehicleIdStr, requestId);
 
         int vehicleAgeMonths = pricingEngine.getVehicleAgeMonths(vehicleIdStr);
         ScoreResponse score = orchestrator.fetchScore(vehicleIdStr, vehicleAgeMonths);

@@ -30,6 +30,7 @@ class DownstreamDataServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "identityUrl", "http://identity");
         org.springframework.test.util.ReflectionTestUtils.setField(service, "maintenanceUrl", "http://maintenance");
         org.springframework.test.util.ReflectionTestUtils.setField(service, "scoringUrl", "http://scoring");
     }
@@ -194,6 +195,70 @@ class DownstreamDataServiceTest {
         assertNull(score.usageScore());
         assertEquals(85.0, score.maintenanceScore());
         assertNull(score.compositeScore());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_bothOptInsTrue_returnsPermitted() {
+        String vehicleId = "v-both-true";
+        String json = """
+            {
+                "vehicle_id": "v-both-true",
+                "usage_tracking_opt_in": true,
+                "maintenance_tracking_opt_in": true,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertTrue(eval.isPermitted());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_eitherFalse_returnsDenied() {
+        String vehicleId = "v-opt-out";
+        String json = """
+            {
+                "vehicle_id": "v-opt-out",
+                "usage_tracking_opt_in": false,
+                "maintenance_tracking_opt_in": true,
+                "updated_at": "2026-10-17T10:00:00Z"
+            }
+            """;
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withSuccess(json, MediaType.APPLICATION_JSON));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_404_returnsDenied() {
+        String vehicleId = "v-unreg";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertFalse(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void evaluateConsent_500_returnsUnavailable() {
+        String vehicleId = "v-500";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId + "/consent"))
+                .andRespond(withServerError());
+
+        var eval = service.evaluateConsent(vehicleId);
+        assertFalse(eval.isPermitted());
+        assertTrue(eval.isUnavailable());
         server.verify();
     }
 }

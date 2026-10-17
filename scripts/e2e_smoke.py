@@ -59,6 +59,7 @@ def main():
     print("--- Running E2E Smoke Test ---")
     
     # 1. Register vehicle
+    submitted_doc = "PAN1234"
     reg_data = {
         "rc_number": "SMOKE123",
         "registration_date": "2023-01-01",
@@ -66,7 +67,7 @@ def main():
             "full_name": "Test Owner",
             "email": "test@example.com",
             "phone_number": "1234567890",
-            "kyc_document_number": "PAN123"
+            "kyc_document_number": submitted_doc
         }
     }
     status, body = request(f"{identity_url}/vehicles", method="POST", data=reg_data)
@@ -77,17 +78,51 @@ def main():
     if isinstance(body, dict):
         vehicle_id = body.get('vehicle_id')
         policy_id = body.get('policy_id')
+        owner = body.get('owner_details', {})
+        kyc_doc = owner.get('kyc_document_number', '')
+        last_4 = submitted_doc[-4:]
+        doc_masked_ok = kyc_doc.startswith("X") and kyc_doc.endswith(last_4)
+        add_result("Registration kyc_document_number masked", doc_masked_ok, f"Expected starts with X and ends with {last_4}, got {kyc_doc}")
 
     if not vehicle_id:
         add_result("Pre-requisite: Vehicle ID", False, "Missing vehicle_id from registration")
         print("Cannot continue without vehicle_id. Summarizing and exiting.")
         summarize_and_exit()
         
-    # 2. Update consent
-    status, body = request(f"{identity_url}/vehicles/{vehicle_id}/consent", method="PUT", data={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True})
-    assert_status("Update consent", status, 200, body)
+    # 2. Freshly registered vehicle quote (default opted-out): not_evaluated, premium 13,650.00
+    status, body_fresh_optout = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
+    assert_status("Quote (fresh vehicle, opted-out)", status, 200, body_fresh_optout)
+    if isinstance(body_fresh_optout, dict):
+        health_st = body_fresh_optout.get('score_detail', {}).get('health_status')
+        prem = body_fresh_optout.get('final_premium')
+        add_result("Fresh vehicle quote is not_evaluated", health_st == "not_evaluated", f"Expected not_evaluated, got {health_st}")
+        add_result("Fresh vehicle final_premium == 13,650.00", prem == 13650.0, f"Expected 13650.0, got {prem}")
+    else:
+        add_result("Fresh vehicle quote is not_evaluated", False, "Invalid quote response")
+        add_result("Fresh vehicle final_premium == 13,650.00", False, "Invalid quote response")
 
-    # 3. Score
+    # 3. Update consent: PUT consent both true -> quote is insufficient_data
+    status, body = request(f"{identity_url}/vehicles/{vehicle_id}/consent", method="PUT", data={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True})
+    assert_status("Update consent both true", status, 200, body)
+
+    status, body_fresh_optin = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
+    assert_status("Quote (fresh vehicle, opted-in)", status, 200, body_fresh_optin)
+    if isinstance(body_fresh_optin, dict):
+        health_st_in = body_fresh_optin.get('score_detail', {}).get('health_status')
+        add_result("Fresh vehicle quote is insufficient_data", health_st_in == "insufficient_data", f"Expected insufficient_data, got {health_st_in}")
+    else:
+        add_result("Fresh vehicle quote is insufficient_data", False, "Invalid quote response")
+
+    # Policy ID stability across quotes
+    if isinstance(body_fresh_optout, dict) and isinstance(body_fresh_optin, dict):
+        if body_fresh_optout.get('policy_id') == body_fresh_optin.get('policy_id') == policy_id:
+            add_result("Policy ID stability", True)
+        else:
+            add_result("Policy ID stability", False, f"Expected {policy_id}, got {body_fresh_optout.get('policy_id')} and {body_fresh_optin.get('policy_id')}")
+    else:
+        add_result("Policy ID stability", False, "Quotes did not return valid JSON dictionaries")
+
+    # 4. Score direct endpoint test
     score_payload = {
         "telematics_summary": {
             "total_distance_km": 100,
@@ -104,24 +139,9 @@ def main():
     status, body = request(f"{scoring_url}/score/{vehicle_id}", method="POST", data=score_payload)
     assert_status("Score (fresh)", status, 200, body)
 
-    # 4. Quote twice (stable policy_id)
-    status, body1 = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
-    assert_status("Quote 1", status, 200, body1)
-    
-    status, body2 = request(f"{pricing_url}/quote/{vehicle_id}", method="POST")
-    assert_status("Quote 2", status, 200, body2)
-    
-    if isinstance(body1, dict) and isinstance(body2, dict):
-        if body1.get('policy_id') == body2.get('policy_id') == policy_id:
-            add_result("Policy ID stability", True)
-        else:
-            add_result("Policy ID stability", False, f"Expected {policy_id}, got {body1.get('policy_id')} and {body2.get('policy_id')}")
-    else:
-        add_result("Policy ID stability", False, "Quotes did not return valid JSON dictionaries")
-
-    # 5. Advisories
+    # 5. Advisories for fresh vehicle
     status, body = request(f"{advisory_url}/advisories/{vehicle_id}", method="GET")
-    assert_status("Advisories", status, 200, body)
+    assert_status("Advisories (fresh)", status, 200, body)
 
     # 6. DTC readings
     dtc_full = {
@@ -218,8 +238,47 @@ def main():
     tl5_ok = isinstance(b_tl5, dict) and b_tl5.get("total_services") == 0 and b_tl5.get("events") == []
     add_result("e5f6... timeline total_services 0 and events []", tl5_ok, f"Expected total_services 0 and events [], got {b_tl5}")
 
-    # 10. Multiplier checks: a1b2... < 1.0 and b2c3... > 1.0
+    # 10. Consent toggle for a1b2... (opted-out -> static, opted-in -> dynamic)
+    # PUT consent false for a1b2... -> final 19,968.00, not_evaluated, advisories [TRACKING_DISABLED]
+    st_c_f, b_c_f = request(f"{identity_url}/vehicles/{v1}/consent", method="PUT", data={"usage_tracking_opt_in": False, "maintenance_tracking_opt_in": False})
+    assert_status("PUT consent false for a1b2...", st_c_f, 200, b_c_f)
+
+    st_q1_f, b_q1_f = request(f"{pricing_url}/quote/{v1}", method="POST")
+    assert_status("Quote a1b2... (opted-out) -> 200", st_q1_f, 200, b_q1_f)
+    prem_f = b_q1_f.get("final_premium") if isinstance(b_q1_f, dict) else None
+    hs_f = b_q1_f.get("score_detail", {}).get("health_status") if isinstance(b_q1_f, dict) else None
+    add_result("a1b2... opted out final_premium == 19,968.00", prem_f == 19968.0, f"Expected 19968.0, got {prem_f}")
+    add_result("a1b2... opted out health_status == not_evaluated", hs_f == "not_evaluated", f"Expected not_evaluated, got {hs_f}")
+
+    st_a1_f, b_a1_f = request(f"{advisory_url}/advisories/{v1}")
+    assert_status("Advisories a1b2... (opted-out) -> 200", st_a1_f, 200, b_a1_f)
+    types1_f = [a.get("advisory_type") for a in b_a1_f.get("advisories", [])] if isinstance(b_a1_f, dict) else []
+    add_result("a1b2... opted out advisories == ['TRACKING_DISABLED']", types1_f == ["TRACKING_DISABLED"], f"Expected ['TRACKING_DISABLED'], got {types1_f}")
+
+    # PUT true -> 13,977.60 and SAFE_DRIVING_COMMENDATION
+    st_c_t, b_c_t = request(f"{identity_url}/vehicles/{v1}/consent", method="PUT", data={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True})
+    assert_status("PUT consent true for a1b2...", st_c_t, 200, b_c_t)
+
     st_q1, b_q1 = request(f"{pricing_url}/quote/{v1}", method="POST")
+    assert_status("Quote a1b2... (opted-in) -> 200", st_q1, 200, b_q1)
+    prem_t = b_q1.get("final_premium") if isinstance(b_q1, dict) else None
+    add_result("a1b2... opted in final_premium == 13,977.60", prem_t == 13977.6, f"Expected 13977.6, got {prem_t}")
+
+    st_a1_t, b_a1_t = request(f"{advisory_url}/advisories/{v1}")
+    assert_status("Advisories a1b2... (opted-in) -> 200", st_a1_t, 200, b_a1_t)
+    types1_t = [a.get("advisory_type") for a in b_a1_t.get("advisories", [])] if isinstance(b_a1_t, dict) else []
+    add_result("a1b2... opted in advisories == ['SAFE_DRIVING_COMMENDATION']", types1_t == ["SAFE_DRIVING_COMMENDATION"], f"Expected ['SAFE_DRIVING_COMMENDATION'], got {types1_t}")
+
+    # Unknown valid uuid -> not_evaluated with vehicle_not_registered
+    unk_id = str(uuid.uuid4())
+    st_unk_q, b_unk_q = request(f"{pricing_url}/quote/{unk_id}", method="POST")
+    assert_status("Quote unknown valid uuid -> 200", st_unk_q, 200, b_unk_q)
+    hs_unk = b_unk_q.get("score_detail", {}).get("health_status") if isinstance(b_unk_q, dict) else None
+    flags_unk = b_unk_q.get("score_detail", {}).get("data_flags", []) if isinstance(b_unk_q, dict) else []
+    add_result("unknown valid uuid quote is not_evaluated", hs_unk == "not_evaluated", f"Expected not_evaluated, got {hs_unk}")
+    add_result("unknown valid uuid quote has vehicle_not_registered", "vehicle_not_registered" in flags_unk, f"Expected vehicle_not_registered in {flags_unk}")
+
+    # 11. Multiplier checks: a1b2... < 1.0 and b2c3... > 1.0
     mult_1 = b_q1.get("dynamic_multiplier") if isinstance(b_q1, dict) else None
     add_result("a1b2... multiplier < 1.0", mult_1 is not None and mult_1 < 1.0, f"Expected < 1.0, got {mult_1}")
 
