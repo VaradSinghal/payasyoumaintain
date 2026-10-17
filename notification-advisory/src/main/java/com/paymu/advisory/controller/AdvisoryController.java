@@ -64,6 +64,25 @@ public class AdvisoryController {
         String vehicleIdStr = vehicleId.toString();
         log.info("Generating advisories for vehicle {}", vehicleIdStr);
 
+        com.paymu.advisory.model.ConsentEvaluation consent = downstreamDataService.evaluateConsent(vehicleIdStr);
+        if (!consent.isPermitted()) {
+            if (consent.isUnavailable()) {
+                log.warn("Consent check unavailable for vehicle {} — returning empty advisories", vehicleIdStr);
+                return ResponseEntity.ok(new AdvisoryResponse(vehicleIdStr, List.of(), Instant.now().toString()));
+            }
+            log.info("Tracking disabled or vehicle not registered for {} — returning TRACKING_DISABLED advisory", vehicleIdStr);
+            AdvisoryMessage trackingDisabled = new AdvisoryMessage(
+                    "TRACKING_DISABLED",
+                    com.paymu.advisory.model.AdvisoryPriority.LOW,
+                    "Personalised insights are off",
+                    "Turn on usage and maintenance tracking to get service reminders and a personalised premium.",
+                    "https://paym.app/settings/consent"
+            );
+            List<AdvisoryMessage> advisories = List.of(trackingDisabled);
+            deliveryService.deliver(vehicleIdStr, advisories);
+            return ResponseEntity.ok(new AdvisoryResponse(vehicleIdStr, advisories, Instant.now().toString()));
+        }
+
         JsonNode tripAggregates  = downstreamDataService.fetchTripAggregates(vehicleIdStr);
         ServiceTimeline timeline = downstreamDataService.fetchTimeline(vehicleIdStr);
         RecallStatus recall      = downstreamDataService.fetchRecallStatus(vehicleIdStr);

@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
@@ -209,5 +210,89 @@ class IdentityConsentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.usage_tracking_opt_in").value(true))
                 .andExpect(jsonPath("$.maintenance_tracking_opt_in").value(true));
+    }
+
+    @Test
+    @DisplayName("PII minimization masks kyc_document_number, phone_number, and email on POST and GET")
+    void piiMinimization_masksSensitiveFields() throws Exception {
+        String payload = """
+                {
+                    "rc_number": "KA01AB1234",
+                    "registration_date": "2024-01-01",
+                    "owner_details": {
+                        "full_name": "Test User",
+                        "kyc_document_number": "123456789012",
+                        "kyc_document_type": "AADHAAR",
+                        "email": "testuser@example.com",
+                        "phone_number": "9876543210"
+                    }
+                }
+                """;
+
+        String postRes = mockMvc.perform(post("/vehicles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.owner_details.kyc_document_number").value("XXXXXXXX9012"))
+                .andExpect(jsonPath("$.owner_details.phone_number").value("XXXXXX3210"))
+                .andExpect(jsonPath("$.owner_details.email").value("t***@example.com"))
+                .andReturn().getResponse().getContentAsString();
+
+        String vehicleId = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(postRes).get("vehicle_id").asText();
+
+        // Stored value remains intact in memory
+        var stored = registrationService.getRegistration(vehicleId);
+        org.junit.jupiter.api.Assertions.assertNotNull(stored);
+        org.junit.jupiter.api.Assertions.assertEquals("123456789012", stored.ownerDetails().kycDocumentNumber());
+        org.junit.jupiter.api.Assertions.assertEquals("9876543210", stored.ownerDetails().phoneNumber());
+        org.junit.jupiter.api.Assertions.assertEquals("testuser@example.com", stored.ownerDetails().email());
+
+        // GET response returns masked values
+        mockMvc.perform(get("/vehicles/" + vehicleId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.owner_details.kyc_document_number").value("XXXXXXXX9012"))
+                .andExpect(jsonPath("$.owner_details.phone_number").value("XXXXXX3210"))
+                .andExpect(jsonPath("$.owner_details.email").value("t***@example.com"));
+    }
+
+    @Test
+    @DisplayName("DemoSeeder seeds all 5 demo vehicles with deterministic policy UUIDs and opt-in consent")
+    void demoSeeder_seedsDemoVehicles() {
+        var seeder = new com.paymu.identity.service.DemoSeeder(registrationService);
+        seeder.seedDemoVehicles();
+
+        String v1 = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        String v2 = "b2c3d4e5-f6a7-8901-bcde-f12345678901";
+        String v3 = "c3d4e5f6-a7b8-9012-cdef-123456789012";
+        String v4 = "d4e5f6a7-b8c9-0123-defa-234567890123";
+        String v5 = "e5f6a7b8-c9d0-1234-efab-345678901234";
+
+        var reg1 = registrationService.getRegistration(v1);
+        org.junit.jupiter.api.Assertions.assertNotNull(reg1);
+        org.junit.jupiter.api.Assertions.assertEquals("c4632682-d406-3102-86b7-6a22ef09af5d", reg1.policyId());
+
+        var reg2 = registrationService.getRegistration(v2);
+        org.junit.jupiter.api.Assertions.assertNotNull(reg2);
+        org.junit.jupiter.api.Assertions.assertEquals("4c4caec8-846d-31d6-af88-43c25c038aa4", reg2.policyId());
+
+        var reg3 = registrationService.getRegistration(v3);
+        org.junit.jupiter.api.Assertions.assertNotNull(reg3);
+        org.junit.jupiter.api.Assertions.assertEquals("f613e582-17e0-37cf-b317-856cbca14248", reg3.policyId());
+
+        var reg5 = registrationService.getRegistration(v5);
+        org.junit.jupiter.api.Assertions.assertNotNull(reg5);
+        org.junit.jupiter.api.Assertions.assertEquals("a2aa245d-ecbc-3719-b180-cfc5ca5c3866", reg5.policyId());
+
+        for (String vid : List.of(v1, v2, v3, v4, v5)) {
+            var consent = registrationService.getConsent(vid);
+            org.junit.jupiter.api.Assertions.assertNotNull(consent);
+            org.junit.jupiter.api.Assertions.assertTrue(consent.usageTrackingOptIn());
+            org.junit.jupiter.api.Assertions.assertTrue(consent.maintenanceTrackingOptIn());
+        }
+
+        // Idempotency check: running seed again does not duplicate or fail
+        seeder.seedDemoVehicles();
+        org.junit.jupiter.api.Assertions.assertEquals("c4632682-d406-3102-86b7-6a22ef09af5d", registrationService.getRegistration(v1).policyId());
     }
 }

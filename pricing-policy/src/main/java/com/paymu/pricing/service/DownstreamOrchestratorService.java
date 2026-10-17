@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.paymu.pricing.model.ConsentEvaluation;
+import com.paymu.pricing.model.ConsentResponse;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -88,6 +91,52 @@ public class DownstreamOrchestratorService {
         } catch (Exception e) {
             log.warn("Failed to parse score response for vehicle {}: {}", vehicleId, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Checks tracking consent for the vehicle before any data services are accessed.
+     * Enforces fail-closed semantics on timeouts/errors.
+     */
+    public ConsentEvaluation evaluateConsent(String vehicleId) {
+        String url = identityUrl + "/vehicles/" + vehicleId + "/consent";
+        try {
+            String body = restClient.get()
+                    .uri(url)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                log.warn("Empty consent response from {} for vehicle {}", url, vehicleId);
+                return ConsentEvaluation.unavailable(List.of("consent_status_unavailable"));
+            }
+            ConsentResponse consent = objectMapper.readValue(body, ConsentResponse.class);
+            boolean usage = Boolean.TRUE.equals(consent.usageTrackingOptIn());
+            boolean maintenance = Boolean.TRUE.equals(consent.maintenanceTrackingOptIn());
+            if (usage && maintenance) {
+                return ConsentEvaluation.permitted();
+            }
+            List<String> flags = new ArrayList<>();
+            if (!usage) {
+                flags.add("consent_not_given_usage");
+            }
+            if (!maintenance) {
+                flags.add("consent_not_given_maintenance");
+            }
+            return ConsentEvaluation.denied(flags);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return ConsentEvaluation.denied(List.of("vehicle_not_registered"));
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 404) {
+                return ConsentEvaluation.denied(List.of("vehicle_not_registered"));
+            }
+            log.warn("Server error ({}) checking consent from {} for vehicle {}: {}", e.getStatusCode(), url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable(List.of("consent_status_unavailable"));
+        } catch (RestClientException e) {
+            log.warn("Connection error or timeout checking consent from {} for vehicle {}: {}", url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable(List.of("consent_status_unavailable"));
+        } catch (Exception e) {
+            log.warn("Unexpected error checking consent from {} for vehicle {}: {}", url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable(List.of("consent_status_unavailable"));
         }
     }
 

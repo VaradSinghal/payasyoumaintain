@@ -2,6 +2,8 @@ package com.paymu.advisory.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paymu.advisory.model.ConsentEvaluation;
+import com.paymu.advisory.model.ConsentResponse;
 import com.paymu.advisory.model.RecallStatus;
 import com.paymu.advisory.model.ScoreResponse;
 import com.paymu.advisory.model.ServiceTimeline;
@@ -35,6 +37,9 @@ public class DownstreamDataService {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
+    @Value("${services.identity-url}")
+    private String identityUrl;
+
     @Value("${services.telematics-url}")
     private String telematicsUrl;
 
@@ -47,6 +52,41 @@ public class DownstreamDataService {
     public DownstreamDataService(ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
         this.restClient = restClientBuilder.build();
         this.objectMapper = objectMapper;
+    }
+
+    public ConsentEvaluation evaluateConsent(String vehicleId) {
+        String url = identityUrl + "/vehicles/" + vehicleId + "/consent";
+        try {
+            String body = restClient.get()
+                    .uri(url)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                log.warn("Empty consent response from {} for vehicle {}", url, vehicleId);
+                return ConsentEvaluation.unavailable();
+            }
+            ConsentResponse consent = objectMapper.readValue(body, ConsentResponse.class);
+            boolean usage = Boolean.TRUE.equals(consent.usageTrackingOptIn());
+            boolean maintenance = Boolean.TRUE.equals(consent.maintenanceTrackingOptIn());
+            if (usage && maintenance) {
+                return ConsentEvaluation.permitted();
+            }
+            return ConsentEvaluation.denied();
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return ConsentEvaluation.denied();
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 404) {
+                return ConsentEvaluation.denied();
+            }
+            log.warn("Server error ({}) checking consent from {} for vehicle {}: {}", e.getStatusCode(), url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable();
+        } catch (RestClientException e) {
+            log.warn("Connection error or timeout checking consent from {} for vehicle {}: {}", url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable();
+        } catch (Exception e) {
+            log.warn("Unexpected error checking consent from {} for vehicle {}: {}", url, vehicleId, e.getMessage());
+            return ConsentEvaluation.unavailable();
+        }
     }
 
     public JsonNode fetchTripAggregates(String vehicleId) {

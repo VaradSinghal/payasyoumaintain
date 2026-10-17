@@ -75,13 +75,16 @@ Registers a new vehicle.
   }
   ```
 - **Responses**: 
-  - `201 Created`: Returns `VehicleRegistration` (includes generated `vehicle_id` and `policy_id`).
+  - `201 Created`: Returns `VehicleRegistration` (includes generated `vehicle_id`, `policy_id`, and masked `owner_details`).
   - `400 Bad Request`: Validation failure.
 
 ### `GET /api/v1/vehicles/{vehicleId}`
 Retrieves a vehicle registration.
 - **Responses**: 
-  - `200 OK`: `VehicleRegistration`
+  - `200 OK`: `VehicleRegistration` with masked PII:
+    - `kyc_document_number`: only the last 4 characters visible (e.g. `XXXXXX4567`)
+    - `phone_number`: only the last 4 digits visible (e.g. `XXXXXX7890`)
+    - `email`: first character + `***` + domain (e.g. `t***@test.com`)
   - `404 Not Found`: Unknown vehicle ID
 
 ### `GET /api/v1/vehicles/{vehicleId}/consent`
@@ -173,6 +176,9 @@ Requests a premium quote. Orchestrates downstream calls to calculate premium.
 ## 6. Claims Verification (Port: 8086)
 **Responsibility**: Processes First Notice of Loss (FNOL).
 
+> [!NOTE]
+> **Design Decision (Pending Legal Review)**: Claim triage uses maintenance records to adjudicate and handle claims under the insurance policy contract. This operational policy servicing is legally separate from optional personalization and marketing tracking consent. Consequently, claims verification operates independently of tracking opt-ins.
+
 ### `POST /api/v1/fnol`
 Submits a claim.
 - **Request Body**:
@@ -209,3 +215,7 @@ All services (except Risk Scoring Engine) use standard Spring Boot RFC 7807 prob
 
 ## Authentication
 Currently, endpoints are public for development (`DEMO_MODE`). Future milestones will enforce JWT-based Authorization.
+
+## Known Limitations
+- **No Authentication in MVP**: In the current MVP release, endpoints are public and unauthenticated (`DEMO_MODE`). Because identity and policy endpoints do not yet require user credentials, vehicle IDs must be treated as secrets by clients to prevent unauthorized discovery or data access.
+- **PII Minimisation**: While internal stores maintain full KYC records for compliance, API boundaries enforce PII minimization by masking document numbers, phone numbers, and email addresses.

@@ -183,6 +183,83 @@ public class PricingEngine {
         );
     }
 
+    /**
+     * Computes standard non-personalised pricing when consent is not established or vehicle is unregistered.
+     */
+    public PremiumResponse computeStatic(
+            String vehicleId,
+            String requestId,
+            String policyId,
+            List<String> dataFlags,
+            boolean isUnavailable) {
+
+        VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
+
+        // 1. IDV = ex-showroom × depreciation
+        double depreciation = depreciation(profile.vehicleAgeYears());
+        double idv = profile.exShowroomPrice() * depreciation;
+
+        // 2. Base OD premium before NCB
+        double basePremiumBeforeNcb = round2(idv * BASE_OD_RATE);
+
+        // 3. NCB discount
+        double ncbAdjPct = -profile.ncbPct() * 100;
+        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - profile.ncbPct()));
+
+        List<DiscountBreakdown> breakdown = new ArrayList<>();
+        if (profile.ncbPct() > 0) {
+            breakdown.add(new DiscountBreakdown("no_claim_bonus", ncbAdjPct));
+        }
+        breakdown.add(new DiscountBreakdown("standard_pricing_no_consent", 0.0));
+
+        double dynamicMultiplier = 1.0;
+        double finalPremium = round2(basePremiumAfterNcb * dynamicMultiplier);
+
+        String renewalRec = isUnavailable
+                ? "We couldn't check your tracking preferences right now, so standard pricing is shown."
+                : "Turn on usage and maintenance tracking to get a personalised premium and vehicle health recommendations.";
+
+        List<ScoreResponse.ContributingFactor> factors = List.of(
+                new ScoreResponse.ContributingFactor(
+                        "tracking_off",
+                        0.0,
+                        "neutral",
+                        "Tracking is disabled or consent could not be established."
+                )
+        );
+
+        PremiumResponse.ScoreDetail scoreDetail = new PremiumResponse.ScoreDetail(
+                null,
+                null,
+                null,
+                "not_evaluated",
+                null,
+                null,
+                renewalRec,
+                null,
+                dataFlags,
+                factors
+        );
+
+        Instant now = Instant.now();
+        String methodologyNote = "Standard non-personalised pricing applied (tracking consent not established).";
+
+        return new PremiumResponse(
+                requestId,
+                vehicleId,
+                policyId,
+                round2(basePremiumBeforeNcb),
+                round3(dynamicMultiplier),
+                finalPremium,
+                "INR",
+                breakdown,
+                now.plus(30, ChronoUnit.DAYS).toString(),
+                now.toString(),
+                methodologyNote,
+                scoreDetail
+        );
+    }
+
     // ---- Helpers ------------------------------------------------------------
 
     double depreciation(int ageYears) {

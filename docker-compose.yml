@@ -97,6 +97,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DEMO_SEED_ON_STARTUP: "true"
       # Phase 4: uncomment and set once PostgreSQL wired up
       # SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymu
       # SPRING_DATASOURCE_USERNAME: paymu
@@ -210,6 +211,7 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      IDENTITY_URL:    http://identity-consent:8081/api/v1
       TELEMATICS_URL:  http://telematics-usage-ingestion:8082/api/v1
       MAINTENANCE_URL: http://maintenance-vehicle-health-ingestion:8083/api/v1
       SCORING_URL:     http://risk-scoring-engine:8084

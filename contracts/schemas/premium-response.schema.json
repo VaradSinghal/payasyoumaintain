@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.1.0",
+  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.2.0",
   "title": "Premium Response",
   "description": "Response payload from the pricing-policy service containing the computed premium breakdown.",
   "type": "object",
@@ -85,8 +85,37 @@
       "required": ["usage_score", "maintenance_score", "composite_score"],
       "properties": {
         "usage_score": { "type": ["number", "null"], "description": "0-100 usage score. Null when no trip data exists." },
-        "maintenance_score": { "type": ["number", "null"], "description": "0-100 maintenance score. Null when health_status is 'insufficient_data'." },
+        "maintenance_score": { "type": ["number", "null"], "description": "0-100 maintenance score. Null when health_status is 'insufficient_data' or 'not_evaluated'." },
         "composite_score": { "type": ["number", "null"], "description": "0-100 overall composite score. Null unless both component scores exist." },
+        "health_status": {
+          "type": "string",
+          "enum": ["scored", "insufficient_data", "not_evaluated"],
+          "description": "Whether a vehicle health score could be computed. 'scored' when events exist, 'insufficient_data' when no service events are on file, 'not_evaluated' when tracking consent is not established or vehicle is unregistered."
+        },
+        "vehicle_health_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Deterministic vehicle health score (0-100). Null when health_status is 'insufficient_data' or 'not_evaluated'."
+        },
+        "health_confidence": {
+          "type": ["string", "null"],
+          "enum": ["verified", "unverified_self_reported", null],
+          "description": "'unverified_self_reported' when every contributing service record is self_upload; 'verified' otherwise; null when not evaluated."
+        },
+        "renewal_recommendation": {
+          "type": "string",
+          "description": "Advisory renewal recommendation text. Never phrased as a denial."
+        },
+        "has_open_recall": {
+          "type": ["boolean", "null"],
+          "description": "Open-recall flag from recall-status source. true/false when known; null when unknown/unavailable or not evaluated."
+        },
+        "data_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Data-quality and tracking consent flags, e.g. 'conflicting_records_detected', 'recall_status_unavailable', 'usage_data_unavailable', 'consent_not_given_usage', 'consent_not_given_maintenance', 'vehicle_not_registered', 'consent_status_unavailable'."
+        },
         "contributing_factors": {
           "type": "array",
           "items": {

@@ -10,4 +10,16 @@ public record VehicleRegistration(
         OwnerDetails ownerDetails,
         String kycStatus,
         Instant registeredAt
-) {}
+) {
+    public VehicleRegistration mask() {
+        return new VehicleRegistration(
+                vehicleId,
+                policyId,
+                rcNumber,
+                registrationDate,
+                ownerDetails != null ? ownerDetails.mask() : null,
+                kycStatus,
+                registeredAt
+        );
+    }
+}
