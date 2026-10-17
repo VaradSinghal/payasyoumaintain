@@ -18,9 +18,15 @@ class ShellScreen extends ConsumerWidget {
             onSelected: (value) {
               if (value == 'reset' || value == 'switch_vehicle') {
                 ref.read(authProvider.notifier).logout();
+              } else if (value == 'privacy') {
+                context.push('/privacy');
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'privacy',
+                child: Text('Privacy & tracking'),
+              ),
               const PopupMenuItem(
                 value: 'switch_vehicle',
                 child: Text('Switch vehicle'),

@@ -308,6 +308,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   height: 1.3,
                 ),
               ),
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Privacy & tracking',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                  Icon(Icons.shield_outlined, size: 16, color: Colors.blue.shade900),
+                ],
+              ),
             ],
           ),
         ),
@@ -417,9 +434,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        // TODO: follow-up: implement dynamic pricing adjustments based on consent preferences in pricing-policy service
         const Text(
-          'Your choice is recorded. Personalised pricing based on these settings is coming in the next release.',
+          'Off: you pay the standard premium. On: your premium can reflect your driving and servicing, and it can go down or up. You can change this any time in Privacy & tracking.',
           style: TextStyle(fontSize: 16),
         ),
         const SizedBox(height: 32),
@@ -456,6 +472,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final formattedPremium = _quote != null
         ? CurrencyFormatter.format(_quote!.finalPremium, currency: _quote!.currency)
         : '₹0.00';
+    final isTrackingOff = !_usageTracking && !_maintenanceTracking;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -472,12 +489,47 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 fontSize: 40, fontWeight: FontWeight.bold, color: Colors.green),
           ),
           const SizedBox(height: 16),
-          Text(
-            _quote!.methodologyNote ??
-                'Your choice is recorded. Personalised pricing based on these settings is coming in the next release.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.grey),
-          ),
+          if (isTrackingOff) ...[
+            Card(
+              key: const Key('tracking_off_card'),
+              color: Colors.blue.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.shield_outlined, color: Colors.blue.shade900),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Tracking is off — standard pricing',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Standard pricing is applied because tracking is off.',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            const Text(
+              "We'll personalise your premium as data arrives",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w500),
+            ),
+          ],
         ],
         const Spacer(),
         SizedBox(

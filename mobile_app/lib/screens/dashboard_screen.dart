@@ -25,7 +25,7 @@ class DashboardScreen extends ConsumerWidget {
               await ref.read(dashboardProvider.future);
             } catch (_) {}
           },
-          child: _buildContent(context, data, authState),
+          child: _buildContent(context, data, authState, ref),
         ),
         loading: () => const AppLoading(message: 'Loading dashboard...'),
         error: (error, stack) => AppError(
@@ -36,10 +36,12 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, DashboardData data, AuthState authState) {
+  Widget _buildContent(BuildContext context, DashboardData data, AuthState authState, WidgetRef ref) {
     final quote = data.quote;
     final advisories = data.advisories;
     final scoreDetail = quote.scoreDetail;
+    final isNotEvaluated = scoreDetail?.healthStatus == 'not_evaluated';
+    final isUnavailable = scoreDetail?.dataFlags.contains('consent_status_unavailable') ?? false;
 
     final demoScenario = authState.vehicleId != null
         ? DemoScenario.findByVehicleId(authState.vehicleId!)
@@ -49,9 +51,9 @@ class DashboardScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16.0),
       children: [
         if (authState.isDemo && demoScenario != null)
-          _buildAboutDemoVehicle(demoScenario),
+          _buildAboutDemoVehicle(context, demoScenario),
 
-        if (scoreDetail != null) _buildRecallBanner(scoreDetail.hasOpenRecall),
+        if (scoreDetail != null && !isNotEvaluated) _buildRecallBanner(scoreDetail.hasOpenRecall),
 
         Card(
           child: Padding(
@@ -113,8 +115,10 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          _buildScoresSection(context, scoreDetail),
+          if (isNotEvaluated)
+            _buildTrackingOffCard(context, ref, isUnavailable)
+          else
+            _buildScoresSection(context, scoreDetail),
         ],
 
         const SizedBox(height: 16),
@@ -123,12 +127,12 @@ class DashboardScreen extends ConsumerWidget {
         const SizedBox(height: 16),
         Text('Advisories', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
-        _buildAdvisoriesList(advisories.advisories),
+        _buildAdvisoriesList(context, advisories.advisories),
       ],
     );
   }
 
-  Widget _buildAboutDemoVehicle(DemoScenario scenario) {
+  Widget _buildAboutDemoVehicle(BuildContext context, DemoScenario scenario) {
     return Card(
       color: Colors.blue.shade50,
       margin: const EdgeInsets.only(bottom: 16),
@@ -153,6 +157,18 @@ class DashboardScreen extends ConsumerWidget {
                   style: TextStyle(color: Colors.grey.shade800, height: 1.3),
                 ),
                 const SizedBox(height: 8),
+                const Divider(),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.shield_outlined, color: Colors.blue),
+                  title: const Text(
+                    'Privacy & tracking',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                  ),
+                  subtitle: const Text('Manage data sharing and tracking preferences'),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.blue),
+                  onTap: () => context.push('/privacy'),
+                ),
               ],
             ),
           ),
@@ -257,6 +273,8 @@ class DashboardScreen extends ConsumerWidget {
         return 'Risk adjustment';
       case 'cold_start_neutral':
         return 'New policy, standard rate';
+      case 'standard_pricing_no_consent':
+        return 'Standard pricing (tracking off)';
       default:
         return reason;
     }
@@ -326,6 +344,12 @@ class DashboardScreen extends ConsumerWidget {
 
   Widget _buildScoresSection(BuildContext context, ScoreDetail detail) {
     final isInsufficient = detail.healthStatus == 'insufficient_data';
+    final visibleFlags = detail.dataFlags
+        .where((flag) =>
+            !flag.startsWith('consent_not_given_') &&
+            flag != 'vehicle_not_registered' &&
+            flag != 'consent_status_unavailable')
+        .toList();
 
     return Card(
       child: Padding(
@@ -371,12 +395,12 @@ class DashboardScreen extends ConsumerWidget {
                   ),
               ],
             ),
-            if (detail.dataFlags.isNotEmpty) ...[
+            if (visibleFlags.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8.0,
                 runSpacing: 6.0,
-                children: detail.dataFlags.map((flag) {
+                children: visibleFlags.map((flag) {
                   return Chip(
                     label: Text(
                       _labelForDataFlag(flag),
@@ -392,6 +416,16 @@ class DashboardScreen extends ConsumerWidget {
             _buildScoreBar('Usage Score', detail.usageScore),
             const SizedBox(height: 16),
             _buildScoreBar('Maintenance Score', detail.maintenanceScore),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const Key('why_this_score_button'),
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text('Why this score?'),
+                onPressed: () => context.push('/history'),
+              ),
+            ),
             if (detail.contributingFactors.isNotEmpty) ...[
               const SizedBox(height: 16),
               const Divider(),
@@ -474,7 +508,99 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAdvisoriesList(List<AdvisoryMessage> advisories) {
+  Widget _buildTrackingOffCard(BuildContext context, WidgetRef ref, bool isUnavailable) {
+    if (isUnavailable) {
+      return Card(
+        key: const Key('consent_unavailable_card'),
+        color: Colors.amber.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Preferences Unavailable',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "We couldn't check your tracking preferences. Standard pricing is shown.",
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                key: const Key('retry_consent_button'),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Retry'),
+                onPressed: () => ref.invalidate(dashboardProvider),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      key: const Key('tracking_off_card'),
+      color: Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.shield_outlined, color: Colors.blue.shade900),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tracking is off — standard pricing',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Your driving and maintenance data are not tracked. Turn tracking on to unlock personalised pricing and health insights.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton(
+                  key: const Key('privacy_tracking_button'),
+                  onPressed: () => context.push('/privacy'),
+                  child: const Text('Privacy & tracking'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: () => context.push('/history'),
+                  child: const Text('Why this score?'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdvisoriesList(BuildContext context, List<AdvisoryMessage> advisories) {
     if (advisories.isEmpty) {
       return Card(
         color: Colors.green.shade50,
@@ -503,11 +629,24 @@ class DashboardScreen extends ConsumerWidget {
           color = Colors.blue;
         }
 
+        final isConsentAdvisory = a.advisoryType == 'TRACKING_DISABLED' ||
+            (a.actionUrl != null &&
+                (a.actionUrl!.contains('consent') ||
+                    a.actionUrl!.contains('settings/consent') ||
+                    a.actionUrl!.contains('privacy')));
+
         return Card(
           child: ListTile(
             leading: Icon(Icons.info, color: color),
             title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(a.message),
+            trailing: isConsentAdvisory ? const Icon(Icons.chevron_right) : null,
+            onTap: isConsentAdvisory
+                ? () {
+                    // Map action_url to internal privacy screen; never open external https URL
+                    context.push('/privacy');
+                  }
+                : null,
           ),
         );
       }).toList(),
