@@ -13,11 +13,13 @@ spring:
 
 services:
   maintenance-url: ${MAINTENANCE_URL:http://localhost:8083/api/v1}
+  identity-url:    ${IDENTITY_URL:http://localhost:8081/api/v1}
 
 claims:
   # Days within which a recent clean service makes a "mechanical failure" claim
   # suspicious enough to warrant manual review rather than straight-through processing.
   clean-service-window-days: 90
+  max-incident-age-days: 365
 
 management:
   endpoints:
