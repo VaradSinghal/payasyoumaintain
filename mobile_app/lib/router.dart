@@ -6,7 +6,9 @@ import 'providers/auth_provider.dart';
 import 'screens/claims_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/diagnostics_screen.dart';
+import 'screens/history_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/privacy_screen.dart';
 import 'screens/shell_screen.dart';
 import 'widgets/shared_widgets.dart';
 
@@ -67,6 +69,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/diagnostics',
         builder: (context, state) => const DiagnosticsScreen(),
+      ),
+      GoRoute(
+        path: '/privacy',
+        builder: (context, state) => const PrivacyScreen(),
+      ),
+      GoRoute(
+        path: '/history',
+        builder: (context, state) => const HistoryScreen(),
       ),
     ],
   );
