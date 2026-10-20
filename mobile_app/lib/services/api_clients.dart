@@ -46,7 +46,11 @@ class IdentityConsentApi {
 
   Future<VehicleRegistration> registerVehicle(Map<String, dynamic> requestData) async {
     if (ApiConfig.isDemoMode) {
-      return VehicleRegistration(vehicleId: 'demo-vehicle-123', policyId: 'demo-policy-123');
+      return VehicleRegistration(
+        vehicleId: 'demo-vehicle-123',
+        policyId: 'demo-policy-123',
+        vehicleSegmentId: requestData['vehicle_segment_id'] as String?,
+      );
     }
     try {
       final response = await _dio.post('/vehicles', data: requestData);
@@ -89,6 +93,26 @@ class IdentityConsentApi {
 
 class PricingPolicyApi {
   final Dio _dio = _createDio(ApiConfig.pricingUrl);
+
+  Future<List<VehicleSegment>> getVehicleCatalogue() async {
+    if (ApiConfig.isDemoMode) {
+      return [
+        VehicleSegment(id: 'hatchback_compact', label: 'Compact hatchback', exShowroomPriceInr: 800000),
+        VehicleSegment(id: 'sedan_entry', label: 'Entry sedan', exShowroomPriceInr: 900000),
+        VehicleSegment(id: 'suv_compact', label: 'Compact SUV', exShowroomPriceInr: 1000000),
+        VehicleSegment(id: 'sedan_mid', label: 'Mid-size sedan', exShowroomPriceInr: 1200000),
+        VehicleSegment(id: 'suv_premium', label: 'Premium SUV', exShowroomPriceInr: 1500000),
+        VehicleSegment(id: 'suv_luxury', label: 'Luxury SUV', exShowroomPriceInr: 1800000),
+      ];
+    }
+    try {
+      final response = await _dio.get('/vehicle-catalogue');
+      final list = response.data as List<dynamic>;
+      return list.map((e) => VehicleSegment.fromJson(e as Map<String, dynamic>)).toList();
+    } on DioException catch (e) {
+      throw e.error ?? ApiException(null, 'Network error');
+    }
+  }
 
   Future<QuoteResponse> quote(String vehicleId) async {
     if (ApiConfig.isDemoMode) {

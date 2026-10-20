@@ -7,3 +7,4 @@ final advisoryApiProvider = Provider((ref) => NotificationAdvisoryApi());
 final claimsApiProvider = Provider((ref) => ClaimsVerificationApi());
 final maintenanceApiProvider = Provider((ref) => MaintenanceApi());
 final telematicsApiProvider = Provider((ref) => TelematicsApi());
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);

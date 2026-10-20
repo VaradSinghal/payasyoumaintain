@@ -18,6 +18,9 @@ class FakePricingApi extends PricingPolicyApi {
   QuoteResponse response;
   bool throwError = false;
   int callCount = 0;
+  List<VehicleSegment> catalogue = [
+    VehicleSegment(id: 'sedan_mid', label: 'Mid-size sedan', exShowroomPriceInr: 1200000),
+  ];
 
   FakePricingApi(this.response);
 
@@ -26,6 +29,11 @@ class FakePricingApi extends PricingPolicyApi {
     callCount++;
     if (throwError) throw Exception('Network Error');
     return response;
+  }
+
+  @override
+  Future<List<VehicleSegment>> getVehicleCatalogue() async {
+    return catalogue;
   }
 }
 
@@ -268,11 +276,13 @@ void main() {
 
     testWidgets('Consent toggles start OFF', (tester) async {
       final identityApi = FakeIdentityConsentApi();
+      final pricingApi = FakePricingApi(loadQuoteFixture('quote_a1b2_opted_out.json'));
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             identityApiProvider.overrideWithValue(identityApi),
+            pricingApiProvider.overrideWithValue(pricingApi),
           ],
           child: const MaterialApp(
             home: OnboardingScreen(),
@@ -286,7 +296,12 @@ void main() {
       await tester.tap(find.text('Register my vehicle'));
       await tester.pumpAndSettle();
 
-      // On register step, tap "Register Vehicle"
+      // On register step, tap "Fill demo details"
+      expect(find.text('Fill demo details'), findsOneWidget);
+      await tester.tap(find.text('Fill demo details'));
+      await tester.pumpAndSettle();
+
+      // Tap "Register Vehicle"
       expect(find.text('Register Vehicle'), findsOneWidget);
       await tester.ensureVisible(find.text('Register Vehicle'));
       await tester.pumpAndSettle();
@@ -457,6 +472,8 @@ void main() {
 
       // Register my vehicle -> fill -> Register
       await tester.tap(find.text('Register my vehicle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fill demo details'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Register Vehicle'));
       await tester.pumpAndSettle();
