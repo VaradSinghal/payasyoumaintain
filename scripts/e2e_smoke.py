@@ -332,7 +332,7 @@ def main():
     st_q1, b_q1 = request(f"{pricing_url}/quote/{v1}", method="POST")
     assert_status("Quote a1b2... (opted-in) -> 200", st_q1, 200, b_q1)
     prem_t = b_q1.get("final_premium") if isinstance(b_q1, dict) else None
-    add_result("a1b2... opted in final_premium == 13,977.60", prem_t == 99999.0, f"Expected 99999.0, got {prem_t}")
+    add_result("a1b2... opted in final_premium == 13,977.60", prem_t == 13977.6, f"Expected 13977.6, got {prem_t}")
 
     st_a1_t, b_a1_t = request(f"{advisory_url}/advisories/{v1}")
     assert_status("Advisories a1b2... (opted-in) -> 200", st_a1_t, 200, b_a1_t)
