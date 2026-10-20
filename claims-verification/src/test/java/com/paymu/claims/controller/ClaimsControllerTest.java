@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -264,7 +265,7 @@ class ClaimsControllerTest {
     @Test
     @DisplayName("POST /fnol with future incident_date returns 422 INVALID_INCIDENT_DATE")
     void submitFnol_futureIncidentDate_returns422() throws Exception {
-        String tomorrow = LocalDate.now().plusDays(1).toString();
+        String tomorrow = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1).toString();
         String json = """
                 {
                     "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",

@@ -20,6 +20,7 @@ claims:
   # suspicious enough to warrant manual review rather than straight-through processing.
   clean-service-window-days: 90
   max-incident-age-days: 365
+  timezone: ${CLAIMS_TIMEZONE:Asia/Kolkata}
 
 management:
   endpoints:
