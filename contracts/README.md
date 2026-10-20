@@ -18,9 +18,11 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
 | [`score.schema.json`](schemas/score.schema.json) | v1.2.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
-| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.2.1 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
+| [`premium-response.schema.json`](schemas/premium-response.schema.json) | v1.2.2 | pricing-policy | mobile-app, notification-advisory, contracts | Computed premium with breakdown |
 | [`dtc-reading.schema.json`](schemas/dtc-reading.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | — | Diagnostic Trouble Codes reading from OBD device or manual entry |
 | [`trip-aggregate.schema.json`](schemas/trip-aggregate.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, pricing-policy, notification-advisory | Computed per-trip aggregates (speed, distance, harsh braking, hard acceleration) |
+| [`vehicle-catalogue.schema.json`](schemas/vehicle-catalogue.schema.json) | v1.0.0 | pricing-policy | gateway, mobile-app | Indicative vehicle segments and ex-showroom price catalogue |
+| [`vehicle-registration-request.schema.json`](schemas/vehicle-registration-request.schema.json) | v1.0.0 | mobile-app | identity-consent | Request payload for registering vehicle and owner KYC details |
 
 ## Versioning Policy
 
@@ -57,6 +59,9 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-11 | `trip-aggregate.schema.json` | — | v1.0.0 | **New** | Introduced structured trip aggregate schema. Additive patch bump. Documents `hard_acceleration_count` as events with acceleration_ms2 at or above the configured threshold. |
 | 2026-10-17 | `premium-response.schema.json` | v1.1.0 | v1.2.0 | **Minor** (enum-widening, consumer-breaking) | Widened score_detail.health_status enum with 'not_evaluated' and documented consent and registration data_flags (consent_not_given_usage, consent_not_given_maintenance, vehicle_not_registered, consent_status_unavailable). Widening an enum is breaking for strict consumers that validate incoming payloads against closed enums. |
 | 2026-10-20 | `premium-response.schema.json` | v1.2.0 | v1.2.1 | **Patch** | Added optional `methodology_note` at top level; enforced `additionalProperties: false` in `score_detail` and `contributing_factors`. |
+| 2026-10-20 | `premium-response.schema.json` | v1.2.1 | v1.2.2 | **Patch** | Added optional `pricing_basis` object detailing actuarial profile source, segment ID, ex-showroom price, age in years, depreciation factor, IDV, and NCB percentage (in percentage points, e.g. 20.0 for 20%). |
+| 2026-10-20 | `vehicle-catalogue.schema.json` | — | v1.0.0 | **New** | Introduced vehicle catalogue schema returned by pricing-policy. |
+| 2026-10-20 | `vehicle-registration-request.schema.json` | — | v1.0.0 | **New** | Introduced boundary schema for vehicle registration requests in identity-consent. |
 
 ### Null semantics in `score.schema.json` (v1.2.0)
 

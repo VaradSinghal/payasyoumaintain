@@ -2,8 +2,11 @@ package com.paymu.pricing.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paymu.pricing.model.ScoreEngineRequest;
+import com.paymu.pricing.model.ConsentEvaluation;
+import com.paymu.pricing.model.ConsentResponse;
+import com.paymu.pricing.model.ProfileLookupResult;
 import com.paymu.pricing.model.ScoreResponse;
+import com.paymu.pricing.model.VehicleProfileResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,24 +14,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import com.paymu.pricing.model.ConsentEvaluation;
-import com.paymu.pricing.model.ConsentResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Orchestrates three downstream HTTP calls to assemble a risk score for a vehicle:
- *
- * <ol>
- *   <li>GET telematics-usage-ingestion /aggregates/{vehicleId}</li>
- *   <li>GET maintenance-vehicle-health-ingestion /timeline/{vehicleId}</li>
- *   <li>GET maintenance-vehicle-health-ingestion /recall-status/{vehicleId}</li>
- *   <li>POST risk-scoring-engine /score/{vehicleId} with all three payloads</li>
- * </ol>
- *
- * <p>Each downstream call gracefully degrades: if it fails or returns 404, that
- * input is omitted from the scoring request. The scoring engine handles missing
- * inputs (cold-start) with a neutral 100/100 score.</p>
+ * Orchestrates downstream HTTP calls for pricing calculation:
+ * <ul>
+ *   <li>identity-consent: vehicle profile and tracking consent</li>
+ *   <li>telematics-usage-ingestion: trip aggregates</li>
+ *   <li>maintenance-vehicle-health-ingestion: service timeline + recall status</li>
+ *   <li>risk-scoring-engine: composite risk score</li>
+ * </ul>
  */
 @Service
 public class DownstreamOrchestratorService {
@@ -37,6 +34,7 @@ public class DownstreamOrchestratorService {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final ProfileCache profileCache;
 
     @Value("${services.identity-url}")
     private String identityUrl;
@@ -50,47 +48,52 @@ public class DownstreamOrchestratorService {
     @Value("${services.scoring-url}")
     private String scoringUrl;
 
-    public DownstreamOrchestratorService(ObjectMapper objectMapper, RestClient.Builder restClientBuilder) {
+    public DownstreamOrchestratorService(ObjectMapper objectMapper,
+                                         RestClient.Builder restClientBuilder,
+                                         ProfileCache profileCache) {
         this.objectMapper = objectMapper;
         this.restClient = restClientBuilder.build();
+        this.profileCache = profileCache;
     }
 
     /**
-     * Fetches data from all three upstreams and posts to the scoring engine.
-     * Returns null if the scoring engine itself is unavailable (caller handles as cold-start).
+     * Look up the vehicle profile from identity-consent (or local memory cache).
+     * 2-second timeout enforced by HTTP client settings.
      */
-    public ScoreResponse fetchScore(String vehicleId, int vehicleAgeMonths) {
-        JsonNode timeline = fetchJson(maintenanceUrl + "/timeline/" + vehicleId, "maintenance timeline");
-        JsonNode tripAggregates = fetchJson(telematicsUrl + "/aggregates/" + vehicleId, "trip aggregates");
-        JsonNode recallStatus = fetchJson(maintenanceUrl + "/recall-status/" + vehicleId, "recall status");
+    public ProfileLookupResult fetchProfile(String vehicleId) {
+        Optional<VehicleProfileResponse> cached = profileCache.get(vehicleId);
+        if (cached.isPresent()) {
+            return ProfileLookupResult.found(cached.get());
+        }
 
-        // Build the ScoreRequest payload
-        String url = scoringUrl + "/score/" + vehicleId;
+        String url = identityUrl + "/vehicles/" + vehicleId;
         try {
-            var requestPayload = buildScorePayload(vehicleId, vehicleAgeMonths, timeline, tripAggregates, recallStatus);
-            String payloadJson = objectMapper.writeValueAsString(requestPayload);
-
-            String responseBody = restClient.post()
+            String body = restClient.get()
                     .uri(url)
-                    .header("Content-Type", "application/json")
-                    .body(payloadJson)
                     .retrieve()
                     .body(String.class);
 
-            return objectMapper.readValue(responseBody, ScoreResponse.class);
-        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            if (e.getStatusCode().is4xxClientError()) {
-                log.error("Client error (4xx) calling scorer at {}: status={} body={}", url, e.getStatusCode(), e.getResponseBodyAsString(), e);
-            } else {
-                log.warn("Scorer server error (5xx) for vehicle {}: status={}", vehicleId, e.getStatusCode());
+            if (body == null || body.isBlank()) {
+                return ProfileLookupResult.unregistered();
             }
-            return null;
+
+            VehicleProfileResponse profile = objectMapper.readValue(body, VehicleProfileResponse.class);
+            profileCache.put(vehicleId, profile);
+            return ProfileLookupResult.found(profile);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            return ProfileLookupResult.unregistered();
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().value() == 404) {
+                return ProfileLookupResult.unregistered();
+            }
+            log.warn("Server error ({}) calling identity for profile {}", e.getStatusCode(), vehicleId);
+            return ProfileLookupResult.unavailable();
         } catch (RestClientException e) {
-            log.warn("Risk scoring engine unavailable for vehicle {}: {}", vehicleId, e.getMessage());
-            return null;
+            log.warn("Connection error or timeout calling identity for profile {}: {}", vehicleId, e.getMessage());
+            return ProfileLookupResult.unavailable();
         } catch (Exception e) {
-            log.warn("Failed to parse score response for vehicle {}: {}", vehicleId, e.getMessage());
-            return null;
+            log.warn("Unexpected error calling identity for profile {}: {}", vehicleId, e.getMessage());
+            return ProfileLookupResult.unavailable();
         }
     }
 
@@ -142,14 +145,52 @@ public class DownstreamOrchestratorService {
 
     /**
      * Fetches the policy ID from identity-consent for the given vehicle.
-     * Returns null if unavailable or missing.
+     * Returns a deterministic UUID fallback if unavailable or missing.
      */
     public String fetchPolicyId(String vehicleId) {
-        JsonNode node = fetchJson(identityUrl + "/vehicles/" + vehicleId, "vehicle registration");
-        if (node != null && node.has("policy_id")) {
-            return node.get("policy_id").asText();
+        ProfileLookupResult result = fetchProfile(vehicleId);
+        if (result.isFound() && result.profile() != null && result.profile().policyId() != null) {
+            return result.profile().policyId();
         }
         return java.util.UUID.nameUUIDFromBytes(("policy_" + vehicleId).getBytes()).toString();
+    }
+
+    /**
+     * Fetches data from upstreams and posts to the scoring engine.
+     * Returns null if the scoring engine is unavailable (cold-start).
+     */
+    public ScoreResponse fetchScore(String vehicleId, int vehicleAgeMonths) {
+        JsonNode timeline = fetchJson(maintenanceUrl + "/timeline/" + vehicleId, "maintenance timeline");
+        JsonNode tripAggregates = fetchJson(telematicsUrl + "/aggregates/" + vehicleId, "trip aggregates");
+        JsonNode recallStatus = fetchJson(maintenanceUrl + "/recall-status/" + vehicleId, "recall status");
+
+        String url = scoringUrl + "/score/" + vehicleId;
+        try {
+            var requestPayload = buildScorePayload(vehicleId, vehicleAgeMonths, timeline, tripAggregates, recallStatus);
+            String payloadJson = objectMapper.writeValueAsString(requestPayload);
+
+            String responseBody = restClient.post()
+                    .uri(url)
+                    .header("Content-Type", "application/json")
+                    .body(payloadJson)
+                    .retrieve()
+                    .body(String.class);
+
+            return objectMapper.readValue(responseBody, ScoreResponse.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.error("Client error (4xx) calling scorer at {}: status={} body={}", url, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            } else {
+                log.warn("Scorer server error (5xx) for vehicle {}: status={}", vehicleId, e.getStatusCode());
+            }
+            return null;
+        } catch (RestClientException e) {
+            log.warn("Risk scoring engine unavailable for vehicle {}: {}", vehicleId, e.getMessage());
+            return null;
+        } catch (Exception e) {
+            log.warn("Failed to parse score response for vehicle {}: {}", vehicleId, e.getMessage());
+            return null;
+        }
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -178,28 +219,19 @@ public class DownstreamOrchestratorService {
         }
     }
 
-    /**
-     * Assembles a score-engine request from the raw JSON nodes returned by the
-     * upstream services. Each field is optional — absent fields result in a
-     * cold-start neutral score from the engine.
-     */
     private java.util.Map<String, Object> buildScorePayload(String vehicleId, int vehicleAgeMonths, JsonNode timeline,
                                                              JsonNode tripAggregates, JsonNode recallStatus) {
         var payload = new java.util.LinkedHashMap<String, Object>();
-        
         payload.put("vehicle_age_months", vehicleAgeMonths);
 
-        // service_timeline: the maintenance service returns a ServiceTimeline object
         if (timeline != null && !timeline.isNull()) {
             payload.put("service_timeline", objectMapper.convertValue(timeline, Object.class));
         }
 
-        // trip_aggregates: the telematics service returns a JSON array, forwarded as raw JsonNode
         if (tripAggregates != null && !tripAggregates.isNull() && tripAggregates.isArray()) {
             payload.put("trip_aggregates", tripAggregates);
         }
 
-        // recall_status: ensure availability is always populated (available / unavailable)
         if (recallStatus != null && !recallStatus.isNull()) {
             var recallMap = objectMapper.convertValue(recallStatus, java.util.Map.class);
             if (!recallMap.containsKey("availability") || recallMap.get("availability") == null) {
@@ -211,8 +243,8 @@ public class DownstreamOrchestratorService {
             }
         } else {
             payload.put("recall_status", java.util.Map.of(
-                "vehicle_id", vehicleId,
-                "availability", "unavailable"
+                    "vehicle_id", vehicleId,
+                    "availability", "unavailable"
             ));
         }
 

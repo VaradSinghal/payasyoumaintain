@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.2.1",
+  "$id": "https://payasyoumaintain.com/schemas/premium-response/v1.2.2",
   "title": "Premium Response",
   "description": "Response payload from the pricing-policy service containing the computed premium breakdown.",
   "type": "object",
@@ -133,6 +133,59 @@
             },
             "additionalProperties": false
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "pricing_basis": {
+      "type": "object",
+      "description": "Actuarial basis and vehicle profile attributes used to derive the base premium.",
+      "required": [
+        "source",
+        "vehicle_segment_id",
+        "ex_showroom_price_inr",
+        "vehicle_age_years",
+        "depreciation_factor",
+        "idv",
+        "ncb_pct"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["registered", "demo_profile", "generic_default"],
+          "description": "Source of vehicle profile parameters."
+        },
+        "vehicle_segment_id": {
+          "type": ["string", "null"],
+          "description": "Catalogue segment ID if registered or known, null otherwise."
+        },
+        "ex_showroom_price_inr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Ex-showroom price in INR."
+        },
+        "vehicle_age_years": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Vehicle age in completed years."
+        },
+        "depreciation_factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Depreciation rate applied to ex-showroom price to determine IDV."
+        },
+        "idv": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Insured Declared Value (IDV) in INR."
+        },
+        "ncb_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "No Claim Bonus discount in percentage points (e.g. 20.0 for 20%).",
+          "examples": [20.0]
         }
       },
       "additionalProperties": false

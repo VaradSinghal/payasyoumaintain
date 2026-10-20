@@ -5,10 +5,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.client.RestClientTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,10 +23,14 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 @RestClientTest(DownstreamOrchestratorService.class)
+@Import(ProfileCache.class)
 class DownstreamOrchestratorServiceTest {
 
     @Autowired
     private DownstreamOrchestratorService service;
+
+    @Autowired
+    private ProfileCache profileCache;
 
     @Autowired
     private MockRestServiceServer server;
@@ -29,6 +40,7 @@ class DownstreamOrchestratorServiceTest {
 
     @BeforeEach
     void setUp() {
+        profileCache.clear();
         org.springframework.test.util.ReflectionTestUtils.setField(service, "maintenanceUrl", "http://maintenance");
         org.springframework.test.util.ReflectionTestUtils.setField(service, "telematicsUrl", "http://telematics");
         org.springframework.test.util.ReflectionTestUtils.setField(service, "scoringUrl", "http://scoring");
@@ -344,6 +356,101 @@ class DownstreamOrchestratorServiceTest {
         assertFalse(eval.isPermitted());
         assertEquals(java.util.List.of("consent_status_unavailable"), eval.dataFlags());
         assertTrue(eval.isUnavailable());
+        server.verify();
+    }
+
+    @Test
+    void fetchProfile_deserializesRealIdentityBodyExplicitlyAndCaches() throws Exception {
+        String vehicleId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        String realIdentityBody = """
+            {
+                "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "vin": "MA3EABCD123456789",
+                "registration_number": "MH12AB1234",
+                "make": "Hyundai",
+                "model": "Verna",
+                "variant": "SX Turbo",
+                "year_of_manufacture": 2024,
+                "registration_date": "2024-10-20",
+                "telematics_device_id": "TEL-DEV-001",
+                "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                "registered_at": "2026-10-20T08:29:42Z",
+                "vehicle_segment_id": "sedan_mid"
+            }
+            """;
+
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId))
+                .andRespond(withSuccess(realIdentityBody, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        var result = service.fetchProfile(vehicleId);
+        assertTrue(result.isFound());
+        assertNotNull(result.profile());
+        assertEquals(vehicleId, result.profile().vehicleId());
+        assertEquals("sedan_mid", result.profile().vehicleSegmentId());
+        assertEquals(LocalDate.of(2024, 10, 20), result.profile().registrationDate());
+        assertEquals("c4632682-d406-3102-86b7-6a22ef09af5d", result.profile().policyId());
+        assertEquals("MA3EABCD123456789", result.profile().vin());
+
+        // Verify cache hit: second call does not hit server
+        var cachedResult = service.fetchProfile(vehicleId);
+        assertTrue(cachedResult.isFound());
+        assertEquals("sedan_mid", cachedResult.profile().vehicleSegmentId());
+
+        server.verify();
+    }
+
+    @Test
+    void fetchProfile_404_returnsUnregistered() {
+        String vehicleId = "v-not-found";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+        var result = service.fetchProfile(vehicleId);
+        assertTrue(result.isUnregistered());
+        assertNull(result.profile());
+        server.verify();
+    }
+
+    @Test
+    void fetchProfile_500_returnsUnavailable() {
+        String vehicleId = "v-500-error";
+        server.expect(requestTo("http://identity/vehicles/" + vehicleId))
+                .andRespond(withServerError());
+
+        var result = service.fetchProfile(vehicleId);
+        assertTrue(result.isUnavailable());
+        assertNull(result.profile());
+        server.verify();
+    }
+
+    @Test
+    void fetchProfile_refetchesWhenProfileExpiresFromCache() throws Exception {
+        String vehicleId = "v-refetch";
+        String body = """
+            {
+                "vehicle_id": "v-refetch",
+                "registration_date": "2024-01-01",
+                "vehicle_segment_id": "sedan_mid"
+            }
+            """;
+        server.expect(org.springframework.test.web.client.ExpectedCount.twice(), requestTo("http://identity/vehicles/" + vehicleId))
+                .andRespond(withSuccess(body, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        // First call hits downstream (1st server call)
+        var r1 = service.fetchProfile(vehicleId);
+        assertTrue(r1.isFound());
+        assertEquals("sedan_mid", r1.profile().vehicleSegmentId());
+
+        // Second call within TTL hits cache (0 server calls)
+        var r2 = service.fetchProfile(vehicleId);
+        assertTrue(r2.isFound());
+
+        // Clear cache (simulating TTL expiration)
+        profileCache.clear();
+
+        // Third call refetches from downstream (2nd server call)
+        var r3 = service.fetchProfile(vehicleId);
+        assertTrue(r3.isFound());
         server.verify();
     }
 }

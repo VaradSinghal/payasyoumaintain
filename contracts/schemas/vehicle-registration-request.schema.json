@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/vehicle-registration-request/v1.0.0",
+  "title": "Vehicle Registration Request",
+  "description": "Request payload for registering a vehicle and owner KYC details with identity-consent.",
+  "type": "object",
+  "required": [
+    "rc_number",
+    "registration_date",
+    "owner_details"
+  ],
+  "properties": {
+    "rc_number": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Vehicle registration certificate (RC) number."
+    },
+    "registration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Vehicle registration date (ISO-8601 YYYY-MM-DD)."
+    },
+    "vehicle_segment_id": {
+      "type": ["string", "null"],
+      "description": "Optional catalogue vehicle segment ID."
+    },
+    "owner_details": {
+      "type": "object",
+      "required": [
+        "full_name",
+        "kyc_document_number",
+        "email",
+        "phone_number"
+      ],
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full name of the vehicle owner."
+        },
+        "kyc_document_number": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Aadhaar number or PAN for KYC verification."
+        },
+        "kyc_document_type": {
+          "type": ["string", "null"],
+          "enum": ["AADHAAR", "PAN", null],
+          "description": "KYC document type (AADHAAR or PAN), or null if omitted."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Owner email address."
+        },
+        "phone_number": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Owner phone number."
+        }
+      }
+    }
+  }
+}
