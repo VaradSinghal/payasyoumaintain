@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/fnol-response/v1.0.0",
+  "title": "FNOL Response",
+  "description": "First Notice of Loss (FNOL) triage response and claim status.",
+  "type": "object",
+  "required": [
+    "claim_id",
+    "vehicle_id",
+    "policy_id",
+    "claimed_cause",
+    "triage_decision",
+    "triage_reasons",
+    "triage_reason_codes",
+    "maintenance_signal",
+    "submitted_at"
+  ],
+  "properties": {
+    "claim_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "System-assigned UUID for this claim."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle."
+    },
+    "policy_id": {
+      "type": "string",
+      "description": "Identifier of the policy."
+    },
+    "claimed_cause": {
+      "type": "string",
+      "enum": [
+        "mechanical_failure",
+        "collision",
+        "theft",
+        "natural_disaster",
+        "vandalism",
+        "other"
+      ],
+      "description": "Driver-reported cause of the incident."
+    },
+    "triage_decision": {
+      "type": "string",
+      "enum": [
+        "MANUAL_REVIEW",
+        "STRAIGHT_THROUGH_PROCESSING"
+      ],
+      "description": "Routing outcome for the claim."
+    },
+    "triage_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ordered list of human-readable reasons explaining the triage decision."
+    },
+    "triage_reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mechanical_failure_claimed",
+          "cause_not_mechanical",
+          "recent_clean_service",
+          "no_recent_clean_service",
+          "open_recall_on_file",
+          "recall_status_unavailable",
+          "policy_binding_unverified"
+        ]
+      },
+      "description": "Array of stable machine-readable tokens explaining the triage decision."
+    },
+    "maintenance_signal": {
+      "type": "string",
+      "description": "Summary of how maintenance history contributed to triage."
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of intake."
+    }
+  },
+  "additionalProperties": false
+}
