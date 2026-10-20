@@ -3,10 +3,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/api_providers.dart';
 import '../providers/auth_provider.dart';
 import '../models/models.dart';
+import '../services/api_exception.dart';
 import '../widgets/shared_widgets.dart';
 
 class ClaimsScreen extends ConsumerStatefulWidget {
   const ClaimsScreen({super.key});
+
+  static String mapBackendError(dynamic error) {
+    String? errorCode;
+    String fallbackMessage = error.toString();
+
+    if (error is ApiException) {
+      errorCode = error.error;
+      fallbackMessage = error.message;
+    }
+
+    if (errorCode == 'POLICY_VEHICLE_MISMATCH' || fallbackMessage.contains('POLICY_VEHICLE_MISMATCH')) {
+      return "This policy doesn't match the selected vehicle.";
+    }
+    if (errorCode == 'VEHICLE_NOT_REGISTERED' || fallbackMessage.contains('VEHICLE_NOT_REGISTERED')) {
+      return "This vehicle isn't registered.";
+    }
+    if (errorCode == 'INVALID_INCIDENT_DATE' || fallbackMessage.contains('INVALID_INCIDENT_DATE')) {
+      return "The incident date must be within the last year and not in the future.";
+    }
+
+    return fallbackMessage;
+  }
 
   @override
   ConsumerState<ClaimsScreen> createState() => _ClaimsScreenState();
@@ -19,6 +42,12 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
   String? _error;
 
   final _lookupController = TextEditingController();
+
+  @override
+  void dispose() {
+    _lookupController.dispose();
+    super.dispose();
+  }
 
   Future<void> _lookupClaim(String claimId) async {
     setState(() {
@@ -33,14 +62,15 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
-        // If 404, we can say "Claim not found"
+        _error = ClaimsScreen.mapBackendError(e);
         if (_error!.contains('404')) {
           _error = 'Claim not found';
         }
       });
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -200,14 +230,19 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        const FnolFormWidget(),
+        FnolFormWidget(
+          onClaimSubmitted: (claimId) {
+            _lookupClaim(claimId);
+          },
+        ),
       ],
     );
   }
 }
 
 class FnolFormWidget extends ConsumerStatefulWidget {
-  const FnolFormWidget({super.key});
+  final ValueChanged<String>? onClaimSubmitted;
+  const FnolFormWidget({super.key, this.onClaimSubmitted});
 
   @override
   ConsumerState<FnolFormWidget> createState() => _FnolFormWidgetState();
@@ -230,6 +265,12 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
     'other'
   ];
 
+  @override
+  void dispose() {
+    _descController.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
     final vehicleId = ref.read(authProvider).vehicleId;
     final policyId = ref.read(authProvider).policyId;
@@ -239,17 +280,19 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
       return;
     }
 
-    if (_incidentDate == null || _claimedCause == null || _descController.text.isEmpty) {
+    if (_claimedCause == null || _descController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
+
+    final incidentDateToUse = _incidentDate ?? DateTime.now();
 
     setState(() => _isSubmitting = true);
     try {
       final req = FnolRequest(
         vehicleId: vehicleId,
         policyId: policyId,
-        incidentDate: _incidentDate!.toUtc().toIso8601String(),
+        incidentDate: incidentDateToUse.toUtc().toIso8601String(),
         claimedCause: _claimedCause!,
         incidentDescription: _descController.text,
         photos: _photos,
@@ -258,8 +301,9 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
       final res = await ref.read(claimsApiProvider).submitFnol(req);
       
       if (!mounted) return;
+      final claimId = res.claimId ?? "UNKNOWN";
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Claim submitted successfully! ID: ${res.claimId ?? "UNKNOWN"}')),
+        SnackBar(content: Text('Claim submitted successfully! ID: $claimId')),
       );
       
       setState(() {
@@ -268,11 +312,18 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
         _descController.clear();
         _photos.clear();
       });
+
+      if (res.claimId != null && widget.onClaimSubmitted != null) {
+        widget.onClaimSubmitted!(res.claimId!);
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      final plainMessage = ClaimsScreen.mapBackendError(e);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(plainMessage)));
     } finally {
-      setState(() => _isSubmitting = false);
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
@@ -286,6 +337,10 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
         ),
       );
     }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final firstAllowedDate = today.subtract(const Duration(days: 365));
 
     return Card(
       child: Padding(
@@ -307,11 +362,17 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
             
             InkWell(
               onTap: () async {
+                final initialDate = _incidentDate != null &&
+                        !_incidentDate!.isAfter(today) &&
+                        !_incidentDate!.isBefore(firstAllowedDate)
+                    ? _incidentDate!
+                    : today;
+
                 final date = await showDatePicker(
                   context: context,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime.now(),
+                  initialDate: initialDate,
+                  firstDate: firstAllowedDate,
+                  lastDate: today,
                 );
                 if (date != null) {
                   setState(() => _incidentDate = date);
@@ -325,6 +386,7 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
             const SizedBox(height: 16),
             
             TextField(
+              key: const Key('fnol_description_field'),
               controller: _descController,
               maxLines: 3,
               decoration: const InputDecoration(labelText: 'Incident Description', border: OutlineInputBorder()),

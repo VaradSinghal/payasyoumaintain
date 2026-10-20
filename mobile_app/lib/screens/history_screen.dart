@@ -11,6 +11,59 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String? vehicleId;
   const HistoryScreen({super.key, this.vehicleId});
 
+  static String? formatSourceLabel(String? source) {
+    if (source == null) return null;
+    switch (source.toLowerCase()) {
+      case 'oem_api':
+      case 'oem':
+        return 'OEM';
+      case 'self_upload':
+      case 'self_reported':
+      case 'self-reported':
+        return 'Self-reported';
+      case 'inspection':
+        return 'Inspection';
+      default:
+        return null;
+    }
+  }
+
+  static String formatSourceBadge(String? source) {
+    return formatSourceLabel(source) ?? source ?? 'Unknown';
+  }
+
+  static String humaniseServiceType(String? serviceType) {
+    if (serviceType == null || serviceType.trim().isEmpty) {
+      return 'General service';
+    }
+    final clean = serviceType.replaceAll('_', ' ').trim();
+    if (clean.isEmpty) return 'General service';
+    return clean[0].toUpperCase() + clean.substring(1);
+  }
+
+  static String formatIndianInteger(int value) {
+    final str = value.abs().toString();
+    if (str.length <= 3) {
+      return value < 0 ? '-$str' : str;
+    }
+    final lastThree = str.substring(str.length - 3);
+    final rest = str.substring(0, str.length - 3);
+    final buffer = StringBuffer();
+    for (int i = 0; i < rest.length; i++) {
+      if (i > 0 && (rest.length - i) % 2 == 0) {
+        buffer.write(',');
+      }
+      buffer.write(rest[i]);
+    }
+    final res = '${buffer.toString()},$lastThree';
+    return value < 0 ? '-$res' : res;
+  }
+
+  static String formatOdometer(num? odometerKm) {
+    if (odometerKm == null) return 'N/A';
+    return '${formatIndianInteger(odometerKm.round())} km';
+  }
+
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
 }
@@ -20,6 +73,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String? _error;
   MaintenanceTimeline? _timeline;
   List<TripAggregate>? _aggregates;
+  bool _showAllTrips = false;
 
   @override
   void initState() {
@@ -88,19 +142,29 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     }
   }
 
-  String _formatSourceBadge(String? source) {
-    if (source == null) return 'Unknown';
-    switch (source.toLowerCase()) {
-      case 'oem':
-        return 'OEM';
-      case 'self_reported':
-      case 'self-reported':
-        return 'Self-reported';
-      case 'inspection':
-        return 'Inspection';
-      default:
-        return source;
-    }
+  Widget _buildSourceBadge(String? source) {
+    final label = HistoryScreen.formatSourceLabel(source);
+    final isKnown = label != null;
+    final text = label ?? source ?? 'Unknown';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isKnown ? Colors.blue.shade50 : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isKnown ? Colors.blue.shade300 : Colors.grey.shade400,
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: isKnown ? Colors.blue.shade900 : Colors.grey.shade800,
+        ),
+      ),
+    );
   }
 
   @override
@@ -154,8 +218,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildHistoryContent(BuildContext context) {
-    final events = _timeline?.events ?? [];
-    final trips = _aggregates ?? [];
+    final events = List<TimelineEvent>.from(_timeline?.events ?? []);
+    // Sort service records newest first
+    events.sort((a, b) {
+      final dateA = a.serviceDate ?? '';
+      final dateB = b.serviceDate ?? '';
+      return dateB.compareTo(dateA);
+    });
+
+    final trips = List<TripAggregate>.from(_aggregates ?? []);
+    // Sort trips newest first
+    trips.sort((a, b) {
+      final startA = a.tripStart;
+      final startB = b.tripStart;
+      return startB.compareTo(startA);
+    });
+
+    final displayedTrips = _showAllTrips ? trips : trips.take(10).toList();
 
     return ListView(
       padding: const EdgeInsets.all(16.0),
@@ -184,26 +263,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          e.serviceType ?? 'General Service',
+                          HistoryScreen.humaniseServiceType(e.serviceType),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.blue.shade300),
-                        ),
-                        child: Text(
-                          _formatSourceBadge(e.source),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue.shade900,
-                          ),
-                        ),
-                      ),
+                      _buildSourceBadge(e.source),
                     ],
                   ),
                   subtitle: Padding(
@@ -212,7 +276,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(e.serviceDate ?? 'Unknown date'),
-                        Text(e.odometerKm != null ? '${e.odometerKm!.toStringAsFixed(0)} km' : 'N/A'),
+                        Text(HistoryScreen.formatOdometer(e.odometerKm)),
                       ],
                     ),
                   ),
@@ -234,8 +298,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               ),
             ),
           )
-        else
-          ...trips.map((t) {
+        else ...[
+          ...displayedTrips.map((t) {
             final dateStr = t.tripStart.isNotEmpty
                 ? t.tripStart.contains('T')
                     ? t.tripStart.split('T').first
@@ -268,6 +332,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               ),
             );
           }),
+          if (trips.length > 10) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton.icon(
+                key: const Key('show_all_trips_button'),
+                icon: Icon(_showAllTrips ? Icons.expand_less : Icons.expand_more),
+                label: Text(_showAllTrips ? 'Show less' : 'Show all'),
+                onPressed: () {
+                  setState(() {
+                    _showAllTrips = !_showAllTrips;
+                  });
+                },
+              ),
+            ),
+          ],
+        ],
       ],
     );
   }

@@ -124,6 +124,18 @@ AdvisoryResponse loadAdvisoryFixture(String filename) {
   return AdvisoryResponse.fromJson(json);
 }
 
+MaintenanceTimeline loadTimelineFixture(String filename) {
+  final file = File('test/fixtures/live/$filename');
+  final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+  return MaintenanceTimeline.fromJson(json);
+}
+
+List<TripAggregate> loadAggregatesFixture(String filename) {
+  final file = File('test/fixtures/live/$filename');
+  final list = jsonDecode(file.readAsStringSync()) as List<dynamic>;
+  return TripAggregate.fromJsonList(list);
+}
+
 void main() {
   Widget createTestApp(FakePricingApi pricingApi, FakeAdvisoryApi advisoryApi) {
     return ProviderScope(
@@ -469,50 +481,9 @@ void main() {
       expect(find.text("We'll personalise your premium as data arrives"), findsNothing);
     });
 
-    testWidgets('History screen displays service records with badges and recent trips', (tester) async {
-      final timeline = MaintenanceTimeline(
-        vehicleId: 'test-vehicle',
-        totalServices: 3,
-        events: [
-          TimelineEvent(
-            eventId: 'ev-1',
-            serviceDate: '2025-01-10',
-            serviceType: 'Oil Change',
-            odometerKm: 15000,
-            source: 'oem',
-          ),
-          TimelineEvent(
-            eventId: 'ev-2',
-            serviceDate: '2025-02-15',
-            serviceType: 'Brake Pad Replacement',
-            odometerKm: 18000,
-            source: 'self_reported',
-          ),
-          TimelineEvent(
-            eventId: 'ev-3',
-            serviceDate: '2025-03-20',
-            serviceType: 'Annual Inspection',
-            odometerKm: 22000,
-            source: 'inspection',
-          ),
-        ],
-      );
-
-      final aggregates = [
-        TripAggregate(
-          tripId: 'trip-1',
-          vehicleId: 'test-vehicle',
-          eventCount: 42,
-          avgSpeedKmh: 45.0,
-          maxSpeedKmh: 75.0,
-          harshBrakingCount: 2,
-          hardAccelerationCount: 3,
-          distanceKm: 25.4,
-          tripStart: '2025-04-01T10:00:00Z',
-          tripEnd: '2025-04-01T10:45:00Z',
-        ),
-      ];
-
+    testWidgets('History screen renders live fixture a1b2: shows OEM badges, no Self-reported, and 10-trip limit toggle', (tester) async {
+      final timeline = loadTimelineFixture('timeline_a1b2.json');
+      final aggregates = loadAggregatesFixture('aggregates_a1b2.json');
       final maintenanceApi = FakeMaintenanceApi(timeline);
       final telematicsApi = FakeTelematicsApi(aggregates);
       final evaluatedQuote = loadQuoteFixture('quote_demo_veh_001.json');
@@ -537,18 +508,116 @@ void main() {
 
       expect(find.text('Why this score?'), findsOneWidget);
       expect(find.text('Service History'), findsOneWidget);
-      expect(find.text('Oil Change'), findsOneWidget);
-      expect(find.text('OEM'), findsOneWidget);
-      expect(find.text('15000 km'), findsOneWidget);
-      expect(find.text('Brake Pad Replacement'), findsOneWidget);
-      expect(find.text('Self-reported'), findsOneWidget);
-      expect(find.text('Annual Inspection'), findsOneWidget);
-      expect(find.text('Inspection'), findsOneWidget);
+      expect(find.text('Full service'), findsOneWidget);
+      expect(find.text('35,000 km'), findsOneWidget);
+      expect(find.text('Brake service'), findsOneWidget);
+      expect(find.text('28,000 km'), findsOneWidget);
 
+      // Badges: OEM present (2 records), Self-reported absent
+      expect(find.text('OEM'), findsNWidgets(2));
+      expect(find.text('Self-reported'), findsNothing);
+
+      // Trips section: 12 trips present in fixture, defaults to 10 with toggle
+      await tester.scrollUntilVisible(find.text('Recent Trips'), 200);
       expect(find.text('Recent Trips'), findsOneWidget);
-      expect(find.text('25.4 km'), findsOneWidget);
-      expect(find.text('2 harsh braking'), findsOneWidget);
-      expect(find.text('3 hard acceleration'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('Show all'), 200);
+      expect(find.text('Show all'), findsOneWidget);
+      await tester.tap(find.text('Show all'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('Show less'), 200);
+      expect(find.text('Show less'), findsOneWidget);
+    });
+
+    testWidgets('History screen renders live fixture d4e5: shows Self-reported badges, no OEM', (tester) async {
+      final timeline = loadTimelineFixture('timeline_d4e5.json');
+      final maintenanceApi = FakeMaintenanceApi(timeline);
+      final telematicsApi = FakeTelematicsApi([]);
+      final evaluatedQuote = loadQuoteFixture('quote_demo_veh_004.json');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            maintenanceApiProvider.overrideWithValue(maintenanceApi),
+            telematicsApiProvider.overrideWithValue(telematicsApi),
+            authProvider.overrideWith(() => FakeAuthNotifier()),
+            dashboardProvider.overrideWith((ref) async => DashboardData(
+                  evaluatedQuote,
+                  AdvisoryResponse(advisories: []),
+                )),
+          ],
+          child: const MaterialApp(
+            home: HistoryScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Oil change'), findsOneWidget);
+      expect(find.text('30,000 km'), findsOneWidget);
+      expect(find.text('Brake service'), findsOneWidget);
+      expect(find.text('25,000 km'), findsOneWidget);
+
+      // Badges: Self-reported present (2 records), OEM absent
+      expect(find.text('Self-reported'), findsNWidgets(2));
+      expect(find.text('OEM'), findsNothing);
+    });
+
+    testWidgets('History screen renders live fixture c3d4: shows both OEM and Self-reported badges', (tester) async {
+      final timeline = loadTimelineFixture('timeline_c3d4.json');
+      final maintenanceApi = FakeMaintenanceApi(timeline);
+      final telematicsApi = FakeTelematicsApi([]);
+      final evaluatedQuote = loadQuoteFixture('quote_demo_veh_003.json');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            maintenanceApiProvider.overrideWithValue(maintenanceApi),
+            telematicsApiProvider.overrideWithValue(telematicsApi),
+            authProvider.overrideWith(() => FakeAuthNotifier()),
+            dashboardProvider.overrideWith((ref) async => DashboardData(
+                  evaluatedQuote,
+                  AdvisoryResponse(advisories: []),
+                )),
+          ],
+          child: const MaterialApp(
+            home: HistoryScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Full service'), findsOneWidget);
+      expect(find.text('42,000 km'), findsOneWidget);
+      expect(find.text('Oil change'), findsOneWidget);
+      expect(find.text('38,500 km'), findsOneWidget);
+
+      // Both badges present
+      expect(find.text('OEM'), findsOneWidget);
+      expect(find.text('Self-reported'), findsOneWidget);
+    });
+
+    test('Contract schema maintenance-event source enum values all map to human labels', () {
+      var schemaFile = File('../contracts/schemas/maintenance-event.schema.json');
+      if (!schemaFile.existsSync()) {
+        schemaFile = File('contracts/schemas/maintenance-event.schema.json');
+      }
+      expect(schemaFile.existsSync(), isTrue, reason: 'maintenance-event.schema.json should exist');
+
+      final schemaJson = jsonDecode(schemaFile.readAsStringSync()) as Map<String, dynamic>;
+      final properties = schemaJson['properties'] as Map<String, dynamic>;
+      final sourceProp = properties['source'] as Map<String, dynamic>;
+      final enumValues = (sourceProp['enum'] as List<dynamic>).cast<String>();
+
+      expect(enumValues, containsAll(['oem_api', 'self_upload', 'inspection']));
+
+      for (final val in enumValues) {
+        final label = HistoryScreen.formatSourceLabel(val);
+        expect(label, isNotNull, reason: 'Enum value $val should map to a human label');
+        expect(label!.isNotEmpty, isTrue);
+        expect(label.contains('_'), isFalse, reason: 'Label $label should be humanised, not raw identifier');
+      }
     });
 
     testWidgets('History screen displays empty states when no records or trips exist', (tester) async {

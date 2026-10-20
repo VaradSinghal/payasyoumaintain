@@ -83,6 +83,8 @@ void main() {
       final json = loadJson('quote_demo_veh_002.json');
       final quote = QuoteResponse.fromJson(json);
 
+      expect(quote.basePremium, 12480.0);
+      expect(quote.finalPremium, 12265.34);
       expect(quote.scoreDetail?.hasOpenRecall, isTrue);
       expect(quote.scoreDetail?.healthStatus, 'scored');
       expect(quote.scoreDetail?.healthConfidence, 'verified');
@@ -92,6 +94,8 @@ void main() {
       final json = loadJson('quote_demo_veh_003.json');
       final quote = QuoteResponse.fromJson(json);
 
+      expect(quote.basePremium, 27300.0);
+      expect(quote.finalPremium, 21075.6);
       expect(quote.scoreDetail?.dataFlags, contains('conflicting_records_detected'));
       expect(quote.scoreDetail?.hasOpenRecall, isFalse);
     });
@@ -100,13 +104,16 @@ void main() {
       final json = loadJson('quote_demo_veh_004.json');
       final quote = QuoteResponse.fromJson(json);
 
-      expect(quote.scoreDetail?.healthConfidence, 'unverified_self_reported');
       expect(quote.basePremium, 11700.0);
+      expect(quote.finalPremium, 6563.7);
+      expect(quote.scoreDetail?.healthConfidence, 'unverified_self_reported');
     });
 
     test('e5f6 and fresh vehicle parse with null usage, maintenance and composite scores and insufficient_data', () {
       final json5 = loadJson('quote_demo_veh_005.json');
       final quote5 = QuoteResponse.fromJson(json5);
+      expect(quote5.basePremium, 44460.0);
+      expect(quote5.finalPremium, 44460.0);
       final detail5 = quote5.scoreDetail;
 
       expect(detail5, isNotNull);
@@ -118,6 +125,8 @@ void main() {
 
       final jsonFresh = loadJson('quote_fresh_unregistered.json');
       final quoteFresh = QuoteResponse.fromJson(jsonFresh);
+      expect(quoteFresh.basePremium, 13650.0);
+      expect(quoteFresh.finalPremium, 13650.0);
       final detailFresh = quoteFresh.scoreDetail;
 
       expect(detailFresh, isNotNull);
@@ -210,6 +219,8 @@ void main() {
 
     test('Opted out quotes parse accurately with not_evaluated health status', () {
       final qA1b2Off = QuoteResponse.fromJson(loadJson('quote_a1b2_opted_out.json'));
+      expect(qA1b2Off.basePremium, 24960.0);
+      expect(qA1b2Off.finalPremium, 19968.0);
       expect(qA1b2Off.scoreDetail?.healthStatus, 'not_evaluated');
       expect(qA1b2Off.scoreDetail?.usageScore, isNull);
       expect(qA1b2Off.scoreDetail?.maintenanceScore, isNull);
@@ -221,12 +232,22 @@ void main() {
       expect(qA1b2Off.scoreDetail?.contributingFactors.any((f) => f.factorName == 'tracking_off'), isTrue);
 
       final qNewOff = QuoteResponse.fromJson(loadJson('quote_new_reg_opted_out.json'));
+      expect(qNewOff.basePremium, 13650.0);
+      expect(qNewOff.finalPremium, 13650.0);
       expect(qNewOff.scoreDetail?.healthStatus, 'not_evaluated');
       expect(qNewOff.discountBreakdown.any((d) => d.reason == 'standard_pricing_no_consent'), isTrue);
 
       final qUnavail = QuoteResponse.fromJson(loadJson('quote_consent_status_unavailable.json'));
+      expect(qUnavail.basePremium, 24960.0);
+      expect(qUnavail.finalPremium, 19968.0);
       expect(qUnavail.scoreDetail?.healthStatus, 'not_evaluated');
-      expect(qUnavail.scoreDetail?.dataFlags, contains('consent_status_unavailable'));
+      expect(qUnavail.scoreDetail?.dataFlags, equals(['consent_status_unavailable']));
+      expect(qUnavail.scoreDetail?.renewalRecommendation, "We couldn't check your tracking preferences right now, so standard pricing is shown.");
+
+      final qNewIn = QuoteResponse.fromJson(loadJson('quote_new_reg_opted_in.json'));
+      expect(qNewIn.basePremium, 13650.0);
+      expect(qNewIn.finalPremium, 13650.0);
+      expect(qNewIn.scoreDetail?.healthStatus, 'insufficient_data');
     });
 
     test('Opted out and opted in advisories fixtures parse correctly', () {

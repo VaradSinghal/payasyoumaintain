@@ -312,6 +312,7 @@ class _ManualEntryFormState extends ConsumerState<ManualEntryForm> {
     
     try {
       await ref.read(maintenanceApiProvider).postDtcReading(reading);
+      ref.invalidate(latestDtcProvider);
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
