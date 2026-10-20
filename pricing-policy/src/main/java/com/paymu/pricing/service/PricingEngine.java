@@ -1,38 +1,33 @@
 package com.paymu.pricing.service;
 
-import com.paymu.pricing.model.DiscountBreakdown;
-import com.paymu.pricing.model.PremiumResponse;
-import com.paymu.pricing.model.ScoreResponse;
+import com.paymu.pricing.config.PricingProperties;
+import com.paymu.pricing.exception.ServiceUnavailableException;
+import com.paymu.pricing.model.*;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.Period;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Optional;
 
 /**
  * Core premium calculation logic for the Pay As You Maintain platform.
  *
  * <h3>Formula overview</h3>
  * <pre>
- *   base_premium   = IDV × depreciation_rate × base_od_rate
- *   od_premium     = base_premium × (1 - ncb_pct)
+ *   idv            = ex_showroom_price × depreciation_rate(age)
+ *   base_premium   = round2(idv × base_od_rate)
+ *   od_premium     = round2(base_premium × (1 - ncb_pct))
  *   dynamic_mult   = f(usage_score, maintenance_score)
- *   final_premium  = round(od_premium × dynamic_mult)
+ *   final_premium  = round2(od_premium × dynamic_mult)
  * </pre>
- *
- * <h3>Dynamic multiplier derivation</h3>
- * <p>Composite score 100 → multiplier 0.70 (reward for best-in-class behaviour).
- * Composite score   0 → multiplier 1.50 (surcharge for worst-in-class).
- * Linear interpolation between the two anchors.</p>
- *
- * <h3>IDV &amp; depreciation table</h3>
- * <p>IDVs and vehicle age are hardcoded per the 5 demo vehicle IDs while a real
- * vehicle-registration lookup (Phase 4) is not yet wired up.</p>
  */
 @Service
 public class PricingEngine {
@@ -48,16 +43,18 @@ public class PricingEngine {
     /** Multiplier anchor for composite score = 0 (worst). */
     private static final double MULT_AT_WORST = 1.50;
 
-    /** Score that defines the "neutral" zone — no uplift, no discount. */
-    private static final double NEUTRAL_SCORE = 50.0;
-
     /** Neutral multiplier when no score data is available (cold-start). */
     private static final double NEUTRAL_MULTIPLIER = 1.0;
 
-    // --- IRDAI depreciation slabs (vehicle age → rate applied against ex-showroom) ---
-    /** Vehicle age (years) → depreciation rate to derive IDV */
+    /** Fixed generic default profile price (INR 7,50,000). */
+    private static final long GENERIC_DEFAULT_PRICE_INR = 750_000L;
+
+    /** Fixed generic default profile age in years. */
+    private static final int GENERIC_DEFAULT_AGE_YEARS = 3;
+
+    // --- IRDAI depreciation slabs ---
     private static final Map<Integer, Double> DEPRECIATION_TABLE = Map.of(
-            0, 0.95,   // < 6 months — 5 % depreciation
+            0, 0.95,
             1, 0.85,
             2, 0.80,
             3, 0.70,
@@ -66,60 +63,129 @@ public class PricingEngine {
     );
     private static final double DEPRECIATION_BEYOND_5_YEARS = 0.40;
 
-    // --- Demo vehicle catalogue (hardcoded; replaced by registration lookup in Phase 4) ---
-    private record VehicleProfile(double exShowroomPrice, int vehicleAgeYears, double ncbPct,
-                                   String label) {}
+    private final VehicleCatalogueService catalogueService;
+    private final PricingProperties pricingProperties;
+    private final Clock clock;
 
-    private static final Map<String, VehicleProfile> VEHICLE_CATALOGUE = Map.of(
-            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                    new VehicleProfile(1_200_000, 2, 0.20, "Perfect maintainer — mid-segment sedan, 2yr old"),
-            "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                    new VehicleProfile(800_000, 4, 0.10, "Overdue — compact hatchback, 4yr old"),
-            "c3d4e5f6-a7b8-9012-cdef-123456789012",
-                    new VehicleProfile(1_500_000, 3, 0.00, "Recall vehicle — premium SUV, 3yr old, no NCB"),
-            "d4e5f6a7-b8c9-0123-defa-234567890123",
-                    new VehicleProfile(900_000, 5, 0.25, "Mixed sources — mid-range sedan, 5yr old"),
-            "e5f6a7b8-c9d0-1234-efab-345678901234",
-                    new VehicleProfile(1_800_000, 0, 0.00, "New vehicle — luxury SUV, <6 months old")
-    );
-
-    // --- Default profile for unknown vehicle IDs (cold-start / new enrolment) ---
-    private static final VehicleProfile DEFAULT_PROFILE =
-            new VehicleProfile(750_000, 3, 0.00, "Unknown vehicle — default profile");
-
-    // -------------------------------------------------------------------------
-
-    public int getVehicleAgeMonths(String vehicleId) {
-        VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
-        return profile.vehicleAgeYears() * 12;
+    public PricingEngine(VehicleCatalogueService catalogueService,
+                         PricingProperties pricingProperties,
+                         Clock clock) {
+        this.catalogueService = catalogueService;
+        this.pricingProperties = pricingProperties;
+        this.clock = clock;
     }
 
     /**
-     * Computes the premium for a vehicle given its latest risk score.
-     *
-     * @param vehicleId   UUID of the vehicle
-     * @param requestId   idempotency key (echoed back)
-     * @param policyId    policy UUID (echoed back)
-     * @param score       the risk score from the scoring engine, or null for cold-start (neutral)
-     * @return computed {@link PremiumResponse}
+     * Derives the actuarial pricing basis according to the four outcomes:
+     * <ul>
+     *   <li>(a) Registered vehicle with known segment: source "registered" (or "demo_profile" for the 5 demo IDs)</li>
+     *   <li>(b) Registered vehicle with missing/unknown segment: source "generic_default" at 750,000 with REAL age</li>
+     *   <li>(c) Identity returned 404 (unregistered): fixed generic profile (750,000, age 3), source "generic_default"</li>
+     *   <li>(d) Identity unreachable / 5xx with no cache: throws {@link ServiceUnavailableException}</li>
+     * </ul>
      */
-    public PremiumResponse compute(String vehicleId, String requestId, String policyId, ScoreResponse score) {
+    public PricingBasis derivePricingBasis(String vehicleId, ProfileLookupResult profileLookup) {
+        if (profileLookup == null || profileLookup.isUnavailable()) {
+            throw new ServiceUnavailableException(
+                    "Identity service is unavailable and no cached profile exists for vehicle " + vehicleId
+            );
+        }
 
-        VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
+        if (profileLookup.isUnregistered()) {
+            // Outcome (c): identity answers 404 (unregistered)
+            double depFactor = depreciation(GENERIC_DEFAULT_AGE_YEARS);
+            double idv = GENERIC_DEFAULT_PRICE_INR * depFactor;
+            return new PricingBasis(
+                    "generic_default",
+                    null,
+                    GENERIC_DEFAULT_PRICE_INR,
+                    GENERIC_DEFAULT_AGE_YEARS,
+                    depFactor,
+                    idv,
+                    0.0
+            );
+        }
 
-        // 1. IDV = ex-showroom × depreciation
-        double depreciation = depreciation(profile.vehicleAgeYears());
-        double idv = profile.exShowroomPrice() * depreciation;
+        // Profile found (either from live identity or in-memory cache)
+        VehicleProfileResponse profile = profileLookup.profile();
+        LocalDate today = LocalDate.now(clock);
+        LocalDate regDate = profile.registrationDate();
+        int ageYears = (regDate != null) ? Math.max(0, Period.between(regDate, today).getYears()) : GENERIC_DEFAULT_AGE_YEARS;
+        double depFactor = depreciation(ageYears);
+
+        String segmentId = profile.vehicleSegmentId();
+        Optional<VehicleCatalogueEntry> catalogueEntry = catalogueService.findById(segmentId);
+
+        if (catalogueEntry.isPresent()) {
+            // Outcome (a): vehicle found with a known segment
+            long exShowroom = catalogueEntry.get().exShowroomPriceInr();
+            double idv = exShowroom * depFactor;
+            boolean isDemo = pricingProperties.getDemoNcb().containsKey(vehicleId);
+            String source = isDemo ? "demo_profile" : "registered";
+            double ncbPct = isDemo ? pricingProperties.getDemoNcb().get(vehicleId) : 0.0;
+
+            return new PricingBasis(
+                    source,
+                    segmentId,
+                    exShowroom,
+                    ageYears,
+                    depFactor,
+                    idv,
+                    ncbPct
+            );
+        } else {
+            // Outcome (b): found but segment missing or unknown -> generic_default at 750,000 with REAL age
+            long exShowroom = GENERIC_DEFAULT_PRICE_INR;
+            double idv = exShowroom * depFactor;
+            double ncbPct = pricingProperties.getDemoNcb().getOrDefault(vehicleId, 0.0);
+
+            return new PricingBasis(
+                    "generic_default",
+                    segmentId,
+                    exShowroom,
+                    ageYears,
+                    depFactor,
+                    idv,
+                    ncbPct
+            );
+        }
+    }
+
+    /**
+     * Computes the vehicle age in months from the registration date for scorer input.
+     */
+    public int calculateAgeMonths(LocalDate registrationDate) {
+        if (registrationDate == null) {
+            return GENERIC_DEFAULT_AGE_YEARS * 12;
+        }
+        LocalDate today = LocalDate.now(clock);
+        int months = (int) Period.between(registrationDate, today).toTotalMonths();
+        return Math.max(0, months);
+    }
+
+    /**
+     * Computes the personalised dynamic premium quote for a vehicle.
+     */
+    public PremiumResponse compute(
+            String vehicleId,
+            String requestId,
+            String policyId,
+            PricingBasis basis,
+            ScoreResponse score) {
+
+        // 1. IDV from pricing basis
+        double idv = basis.idv();
 
         // 2. Base OD premium before NCB
         double basePremiumBeforeNcb = round2(idv * BASE_OD_RATE);
 
         // 3. NCB discount
-        double ncbAdjPct = -profile.ncbPct() * 100;            // negative = discount
-        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - profile.ncbPct()));
+        double ncbPct = basis.ncbPct();
+        double ncbAdjPct = -ncbPct * 100;
+        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbPct));
 
         List<DiscountBreakdown> breakdown = new ArrayList<>();
-        if (profile.ncbPct() > 0) {
+        if (ncbPct > 0) {
             breakdown.add(new DiscountBreakdown("no_claim_bonus", ncbAdjPct));
         }
 
@@ -130,15 +196,12 @@ public class PricingEngine {
         double scoreAdjPct;
 
         if (effectiveComposite < 0) {
-            // Cold-start: no history → neutral multiplier
             dynamicMultiplier = NEUTRAL_MULTIPLIER;
             breakdown.add(new DiscountBreakdown("cold_start_neutral", 0.0));
         } else {
-            // Linear interpolation: score 100 → 0.70, score 0 → 1.50
             dynamicMultiplier = round3(
-                    MULT_AT_WORST + (MULT_AT_BEST - MULT_AT_WORST) * (effectiveComposite / 100.0));
-
-            // Express as % adjustment relative to neutral (1.0)
+                    MULT_AT_WORST + (MULT_AT_BEST - MULT_AT_WORST) * (effectiveComposite / 100.0)
+            );
             scoreAdjPct = round2((dynamicMultiplier - 1.0) * 100);
             scoreAdjReason = dynamicMultiplier < 1.0 ? "risk_score_discount" : "risk_score_surcharge";
             breakdown.add(new DiscountBreakdown(scoreAdjReason, scoreAdjPct));
@@ -147,7 +210,7 @@ public class PricingEngine {
         // 5. Final premium
         double finalPremium = round2(basePremiumAfterNcb * dynamicMultiplier);
 
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         PremiumResponse.ScoreDetail scoreDetail = null;
         if (score != null) {
@@ -179,7 +242,8 @@ public class PricingEngine {
                 now.plus(30, ChronoUnit.DAYS).toString(),
                 now.toString(),
                 methodologyNote,
-                scoreDetail
+                scoreDetail,
+                basis
         );
     }
 
@@ -190,24 +254,23 @@ public class PricingEngine {
             String vehicleId,
             String requestId,
             String policyId,
+            PricingBasis basis,
             List<String> dataFlags,
             boolean isUnavailable) {
 
-        VehicleProfile profile = VEHICLE_CATALOGUE.getOrDefault(vehicleId, DEFAULT_PROFILE);
-
-        // 1. IDV = ex-showroom × depreciation
-        double depreciation = depreciation(profile.vehicleAgeYears());
-        double idv = profile.exShowroomPrice() * depreciation;
+        // 1. IDV from pricing basis
+        double idv = basis.idv();
 
         // 2. Base OD premium before NCB
         double basePremiumBeforeNcb = round2(idv * BASE_OD_RATE);
 
         // 3. NCB discount
-        double ncbAdjPct = -profile.ncbPct() * 100;
-        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - profile.ncbPct()));
+        double ncbPct = basis.ncbPct();
+        double ncbAdjPct = -ncbPct * 100;
+        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbPct));
 
         List<DiscountBreakdown> breakdown = new ArrayList<>();
-        if (profile.ncbPct() > 0) {
+        if (ncbPct > 0) {
             breakdown.add(new DiscountBreakdown("no_claim_bonus", ncbAdjPct));
         }
         breakdown.add(new DiscountBreakdown("standard_pricing_no_consent", 0.0));
@@ -241,7 +304,7 @@ public class PricingEngine {
                 factors
         );
 
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         String methodologyNote = "Standard non-personalised pricing applied (tracking consent not established).";
 
         return new PremiumResponse(
@@ -256,13 +319,15 @@ public class PricingEngine {
                 now.plus(30, ChronoUnit.DAYS).toString(),
                 now.toString(),
                 methodologyNote,
-                scoreDetail
+                scoreDetail,
+                basis
         );
     }
 
     // ---- Helpers ------------------------------------------------------------
 
-    double depreciation(int ageYears) {
+    public double depreciation(int ageYears) {
+        if (ageYears <= 0) return 0.95;
         if (ageYears > 5) return DEPRECIATION_BEYOND_5_YEARS;
         return DEPRECIATION_TABLE.getOrDefault(ageYears, DEPRECIATION_BEYOND_5_YEARS);
     }

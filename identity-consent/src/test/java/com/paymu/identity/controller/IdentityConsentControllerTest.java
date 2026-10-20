@@ -294,5 +294,96 @@ class IdentityConsentControllerTest {
         // Idempotency check: running seed again does not duplicate or fail
         seeder.seedDemoVehicles();
         org.junit.jupiter.api.Assertions.assertEquals("c4632682-d406-3102-86b7-6a22ef09af5d", registrationService.getRegistration(v1).policyId());
+
+        // Verify seeded vehicle segments
+        org.junit.jupiter.api.Assertions.assertEquals("sedan_mid", reg1.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals("hatchback_compact", reg2.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals("suv_premium", reg3.vehicleSegmentId());
+        var reg4 = registrationService.getRegistration(v4);
+        org.junit.jupiter.api.Assertions.assertEquals("sedan_entry", reg4.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals("suv_luxury", reg5.vehicleSegmentId());
+    }
+
+    @Test
+    @DisplayName("Boundary Validation: Real app registration fixture validates and registers with 201")
+    void registerVehicle_realFixture_returns201() throws Exception {
+        String fixtureJson = """
+        {
+          "rc_number": "MH12AB1234",
+          "registration_date": "2024-01-15",
+          "owner_details": {
+            "full_name": "PayAsUMaintain User",
+            "kyc_document_number": "ABCDE1234F",
+            "kyc_document_type": "PAN",
+            "email": "user@payasumaintain.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """;
+
+        mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(fixtureJson))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.vehicle_id").isNotEmpty())
+                .andExpect(jsonPath("$.policy_id").isNotEmpty())
+                .andExpect(jsonPath("$.kyc_status").value("VERIFIED"));
+    }
+
+    @Test
+    @DisplayName("Boundary Validation: Request with invalid type rejected with 400 INVALID_REQUEST")
+    void registerVehicle_invalidSchemaType_returns400() throws Exception {
+        String invalidJson = """
+        {
+          "rc_number": 99999,
+          "registration_date": "2024-01-15",
+          "owner_details": {
+            "full_name": "Test User",
+            "kyc_document_number": "ABCDE1234F",
+            "email": "test@example.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """;
+
+        mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message", containsString("Schema validation failed")));
+    }
+
+    @Test
+    @DisplayName("Boundary Validation: Registration with vehicle_segment_id stores and returns it")
+    void registerVehicle_withVehicleSegmentId_storesAndReturns() throws Exception {
+        String jsonWithSegment = """
+        {
+          "rc_number": "DL01AB9999",
+          "registration_date": "2024-05-10",
+          "vehicle_segment_id": "sedan_mid",
+          "owner_details": {
+            "full_name": "Segment User",
+            "kyc_document_number": "123456789012",
+            "kyc_document_type": "AADHAAR",
+            "email": "segment@example.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """;
+
+        String res = mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonWithSegment))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.vehicle_segment_id").value("sedan_mid"))
+                .andReturn().getResponse().getContentAsString();
+
+        String vehicleId = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(res).get("vehicle_id").asText();
+
+        mockMvc.perform(get("/vehicles/" + vehicleId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.vehicle_segment_id").value("sedan_mid"));
     }
 }

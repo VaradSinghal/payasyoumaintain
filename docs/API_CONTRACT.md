@@ -32,6 +32,7 @@ Requests matching the allowlist have their gateway service prefix stripped befor
 - `GET /identity/api/v1/vehicles/{id}/consent` &rarr; Get consent status
 - `PUT /identity/api/v1/vehicles/{id}/consent` &rarr; Update consent status
 - `POST /pricing/api/v1/quote/{id}` &rarr; Calculate quote
+- `GET /pricing/api/v1/vehicle-catalogue` &rarr; Retrieve indicative vehicle catalogue
 - `GET /advisory/api/v1/advisories/{id}` &rarr; Fetch prioritized advisories
 - `POST /claims/api/v1/fnol` &rarr; Submit first notice of loss
 - `GET /claims/api/v1/claims/{id}` &rarr; Get claim status
@@ -65,6 +66,7 @@ Registers a new vehicle.
   {
     "rc_number": "MH12AB1234",
     "registration_date": "2020-01-01",
+    "vehicle_segment_id": "sedan_mid",
     "owner_details": {
       "full_name": "Test Owner",
       "kyc_document_number": "PAN1234567",
@@ -75,8 +77,8 @@ Registers a new vehicle.
   }
   ```
 - **Responses**: 
-  - `201 Created`: Returns `VehicleRegistration` (includes generated `vehicle_id`, `policy_id`, and masked `owner_details`).
-  - `400 Bad Request`: Validation failure.
+  - `201 Created`: Returns `VehicleRegistration` (includes generated `vehicle_id`, `policy_id`, `vehicle_segment_id`, and masked `owner_details`).
+  - `400 Bad Request`: Validation failure against boundary schema `vehicle-registration-request.schema.json` (`{"error":"INVALID_REQUEST","message":"...","timestamp":"..."}`).
 
 ### `GET /api/v1/vehicles/{vehicleId}`
 Retrieves a vehicle registration.
@@ -164,12 +166,25 @@ Generates a risk score from aggregated inputs.
 ---
 
 ## 5. Pricing Policy (Port: 8085)
-**Responsibility**: Calculates real-time insurance premium quotes.
+**Responsibility**: Calculates real-time insurance premium quotes and exposes the indicative vehicle catalogue.
+
+### `GET /api/v1/vehicle-catalogue`
+Retrieves the indicative vehicle catalogue mapping vehicle segments to ex-showroom prices in INR.
+- **Responses**:
+  - `200 OK`: JSON array of `{ "id", "label", "ex_showroom_price_inr" }` conforming to `vehicle-catalogue.schema.json`.
 
 ### `POST /api/v1/quote/{vehicleId}`
-Requests a premium quote. Orchestrates downstream calls to calculate premium.
+Requests a premium quote. Derives pricing basis from registered vehicle segment and age, and orchestrates downstream calls to calculate dynamic risk adjustments.
 - **Responses**: 
-  - `200 OK`: `PremiumResponse` (includes `policy_id`, `final_premium`, `score_detail`).
+  - `200 OK`: `PremiumResponse` conforming to `premium-response.schema.json` v1.2.2. Includes `pricing_basis` object:
+    - `source`: `"registered"`, `"demo_profile"`, or `"generic_default"`
+    - `vehicle_segment_id`: catalogue segment ID or null
+    - `ex_showroom_price_inr`: indicative catalogue ex-showroom price
+    - `vehicle_age_years`: whole years elapsed from registration date
+    - `depreciation_factor`: IRDAI depreciation slab multiplier
+    - `idv`: Insured Declared Value (ex_showroom × depreciation_factor)
+    - `ncb_pct`: No Claim Bonus percentage
+  - `503 Service Unavailable`: Returned when identity-consent is unreachable or returns 5xx and no cached profile exists for the vehicle (`{"error":"SERVICE_UNAVAILABLE","message":"...","timestamp":"..."}`). Never invents an unbacked premium.
 
 ---
 

@@ -49,6 +49,7 @@ def assert_status(step, status, expected_statuses, body=None):
         add_result(step, False, f"Expected {expected_statuses}, got {status}. Body: {body}")
 
 def main():
+    gateway_url = os.environ.get('GATEWAY_URL', 'http://localhost:8080').rstrip('/')
     identity_url = os.environ.get('IDENTITY_URL', 'http://localhost:8081/api/v1')
     pricing_url = os.environ.get('PRICING_URL', 'http://localhost:8085/api/v1')
     scoring_url = os.environ.get('SCORING_URL', 'http://localhost:8084')
@@ -57,13 +58,20 @@ def main():
     claims_url = os.environ.get('CLAIMS_URL', 'http://localhost:8086/api/v1')
     telematics_url = os.environ.get('TELEMATICS_URL', 'http://localhost:8082/api/v1')
 
+    def years_ago(y):
+        t = datetime.date.today()
+        try:
+            return t.replace(year=t.year - y).isoformat()
+        except ValueError:
+            return (t - datetime.timedelta(days=y * 365)).isoformat()
+
     print("--- Running E2E Smoke Test ---")
     
     # 1. Register vehicle
     submitted_doc = "PAN1234"
     reg_data = {
         "rc_number": "SMOKE123",
-        "registration_date": "2023-01-01",
+        "registration_date": years_ago(3),
         "owner_details": {
             "full_name": "Test Owner",
             "email": "test@example.com",
@@ -122,6 +130,96 @@ def main():
             add_result("Policy ID stability", False, f"Expected {policy_id}, got {body_fresh_optout.get('policy_id')} and {body_fresh_optin.get('policy_id')}")
     else:
         add_result("Policy ID stability", False, "Quotes did not return valid JSON dictionaries")
+
+    # 3b. Vehicle Profile & Pricing Basis Drive Pricing Tests
+    # (i) register sedan_mid with a date 2 years ago and opt in -> pricing_basis registered, base 24,960, final 24,960.00
+    reg_sedan_mid = {
+        "rc_number": f"MID{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(2),
+        "vehicle_segment_id": "sedan_mid",
+        "owner_details": {
+            "full_name": "Sedan Mid Owner",
+            "email": "sedanmid@example.com",
+            "phone_number": "9876543210",
+            "kyc_document_number": "PANMID1234"
+        }
+    }
+    st_mid, b_reg_mid = request(f"{identity_url}/vehicles", method="POST", data=reg_sedan_mid)
+    assert_status("Register sedan_mid (2 years ago)", st_mid, 201, b_reg_mid)
+    vid_mid = b_reg_mid.get("vehicle_id") if isinstance(b_reg_mid, dict) else None
+
+    if vid_mid:
+        st_c_mid, _ = request(f"{identity_url}/vehicles/{vid_mid}/consent", method="PUT", data={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True})
+        assert_status("Opt-in sedan_mid tracking consent", st_c_mid, 200)
+
+        st_q_mid, b_q_mid = request(f"{pricing_url}/quote/{vid_mid}", method="POST")
+        assert_status("Quote sedan_mid (opted-in)", st_q_mid, 200, b_q_mid)
+        if isinstance(b_q_mid, dict):
+            pb = b_q_mid.get("pricing_basis", {})
+            pb_src = pb.get("source")
+            base_p = b_q_mid.get("base_premium")
+            final_p = b_q_mid.get("final_premium")
+            add_result("sedan_mid pricing_basis source == 'registered'", pb_src == "registered", f"Expected 'registered', got {pb_src}")
+            add_result("sedan_mid base_premium == 24,960.0", base_p == 24960.0, f"Expected 24960.0, got {base_p}")
+            add_result("sedan_mid final_premium == 24,960.00", final_p == 24960.0, f"Expected 24960.0, got {final_p}")
+        else:
+            add_result("sedan_mid quote response is dict", False, "Invalid quote response")
+
+    # (ii) register with no segment (3 years ago) -> generic_default, 13,650
+    reg_noseg = {
+        "rc_number": f"NOSEG{uuid.uuid4().hex[:5].upper()}",
+        "registration_date": years_ago(3),
+        "owner_details": {
+            "full_name": "No Segment Owner",
+            "email": "noseg@example.com",
+            "phone_number": "9876543211",
+            "kyc_document_number": "PANNOSEG01"
+        }
+    }
+    st_noseg, b_reg_noseg = request(f"{identity_url}/vehicles", method="POST", data=reg_noseg)
+    assert_status("Register vehicle with no segment (3 years ago)", st_noseg, 201, b_reg_noseg)
+    vid_noseg = b_reg_noseg.get("vehicle_id") if isinstance(b_reg_noseg, dict) else None
+
+    if vid_noseg:
+        st_q_noseg, b_q_noseg = request(f"{pricing_url}/quote/{vid_noseg}", method="POST")
+        assert_status("Quote vehicle with no segment", st_q_noseg, 200, b_q_noseg)
+        if isinstance(b_q_noseg, dict):
+            pb_noseg = b_q_noseg.get("pricing_basis", {})
+            add_result("no segment pricing_basis source == 'generic_default'", pb_noseg.get("source") == "generic_default", f"Expected generic_default, got {pb_noseg.get('source')}")
+            add_result("no segment final_premium == 13,650.0", b_q_noseg.get("final_premium") == 13650.0, f"Expected 13650.0, got {b_q_noseg.get('final_premium')}")
+        else:
+            add_result("no segment quote response is dict", False, "Invalid response")
+
+    # (iii) an unknown segment id -> generic_default
+    reg_unk = {
+        "rc_number": f"UNK{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(2),
+        "vehicle_segment_id": "unknown_segment_rocket_car",
+        "owner_details": {
+            "full_name": "Unknown Segment Owner",
+            "email": "unkseg@example.com",
+            "phone_number": "9876543212",
+            "kyc_document_number": "PANUNKSEG1"
+        }
+    }
+    st_unk_seg, b_reg_unk = request(f"{identity_url}/vehicles", method="POST", data=reg_unk)
+    assert_status("Register vehicle with unknown segment", st_unk_seg, 201, b_reg_unk)
+    vid_unk_seg = b_reg_unk.get("vehicle_id") if isinstance(b_reg_unk, dict) else None
+
+    if vid_unk_seg:
+        st_q_unk, b_q_unk = request(f"{pricing_url}/quote/{vid_unk_seg}", method="POST")
+        assert_status("Quote vehicle with unknown segment", st_q_unk, 200, b_q_unk)
+        if isinstance(b_q_unk, dict):
+            pb_unk = b_q_unk.get("pricing_basis", {})
+            add_result("unknown segment pricing_basis source == 'generic_default'", pb_unk.get("source") == "generic_default", f"Expected generic_default, got {pb_unk.get('source')}")
+        else:
+            add_result("unknown segment quote response is dict", False, "Invalid response")
+
+    # (iv) GET the catalogue through the gateway -> 6 entries
+    st_cat, b_cat = request(f"{gateway_url}/pricing/api/v1/vehicle-catalogue", method="GET")
+    assert_status("GET catalogue through gateway -> 200", st_cat, 200, b_cat)
+    cat_ok = isinstance(b_cat, list) and len(b_cat) == 6
+    add_result("Gateway catalogue has 6 entries", cat_ok, f"Expected 6 entries, got {b_cat}")
 
     # 4. Score direct endpoint test
     score_payload = {
@@ -418,6 +516,11 @@ def main():
     score_det2 = b_q2.get("score_detail", {}) if isinstance(b_q2, dict) else {}
     recall2 = score_det2.get("has_open_recall")
     add_result("b2c3... has_open_recall is true", recall2 is True, f"Expected True, got {recall2}")
+
+    # 14b. Five demo quotes pricing_basis sources == "demo_profile"
+    for label, b_demo_q in [("a1b2", b_q1), ("b2c3", b_q2), ("c3d4", b_q3), ("d4e5", b_q4), ("e5f6", b_q5)]:
+        src_val = b_demo_q.get("pricing_basis", {}).get("source") if isinstance(b_demo_q, dict) else None
+        add_result(f"Demo vehicle {label} pricing_basis.source == 'demo_profile'", src_val == "demo_profile", f"Expected 'demo_profile', got {src_val}")
 
     # 15. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
     fnol_upper = {

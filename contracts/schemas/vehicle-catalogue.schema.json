@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/vehicle-catalogue/v1.0.0",
+  "title": "Vehicle Catalogue",
+  "description": "List of standard vehicle segments with indicative ex-showroom prices for IDV derivation.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "label",
+      "ex_showroom_price_inr"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique vehicle segment identifier (e.g. 'sedan_mid')."
+      },
+      "label": {
+        "type": "string",
+        "description": "Human-readable label for the vehicle segment."
+      },
+      "ex_showroom_price_inr": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Indicative ex-showroom price in INR."
+      }
+    },
+    "additionalProperties": false
+  }
+}

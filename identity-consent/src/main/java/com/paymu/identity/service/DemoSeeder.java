@@ -5,14 +5,17 @@ import com.paymu.identity.model.OwnerDetails;
 import com.paymu.identity.model.VehicleRegistration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,12 +29,24 @@ public class DemoSeeder implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(DemoSeeder.class);
 
     private final RegistrationService registrationService;
+    private final Clock clock;
+    private final ZoneId zoneId;
 
     @Value("${demo.seed-on-startup:false}")
     private boolean seedOnStartup;
 
     public DemoSeeder(RegistrationService registrationService) {
+        this(registrationService, Clock.system(ZoneId.of("Asia/Kolkata")), "Asia/Kolkata");
+    }
+
+    @Autowired
+    public DemoSeeder(
+            RegistrationService registrationService,
+            Clock clock,
+            @Value("${identity.timezone:Asia/Kolkata}") String timezone) {
         this.registrationService = registrationService;
+        this.clock = clock;
+        this.zoneId = ZoneId.of(timezone);
     }
 
     private record DemoVehicleSeed(
@@ -43,7 +58,8 @@ public class DemoSeeder implements ApplicationRunner {
             String email,
             String phone,
             int ageYears,
-            int ageMonths
+            int ageMonths,
+            String vehicleSegmentId
     ) {}
 
     private static final List<DemoVehicleSeed> DEMO_VEHICLES = List.of(
@@ -56,7 +72,8 @@ public class DemoSeeder implements ApplicationRunner {
                     "aarav.sharma@example.com",
                     "9876543210",
                     2,
-                    0
+                    0,
+                    "sedan_mid"
             ),
             new DemoVehicleSeed(
                     "b2c3d4e5-f6a7-8901-bcde-f12345678901",
@@ -67,7 +84,8 @@ public class DemoSeeder implements ApplicationRunner {
                     "priya.patel@example.com",
                     "9876543211",
                     4,
-                    0
+                    0,
+                    "hatchback_compact"
             ),
             new DemoVehicleSeed(
                     "c3d4e5f6-a7b8-9012-cdef-123456789012",
@@ -78,7 +96,8 @@ public class DemoSeeder implements ApplicationRunner {
                     "vikram.malhotra@example.com",
                     "9876543212",
                     3,
-                    0
+                    0,
+                    "suv_premium"
             ),
             new DemoVehicleSeed(
                     "d4e5f6a7-b8c9-0123-defa-234567890123",
@@ -89,7 +108,8 @@ public class DemoSeeder implements ApplicationRunner {
                     "sunita.rao@example.com",
                     "9876543213",
                     5,
-                    0
+                    0,
+                    "sedan_entry"
             ),
             new DemoVehicleSeed(
                     "e5f6a7b8-c9d0-1234-efab-345678901234",
@@ -100,7 +120,8 @@ public class DemoSeeder implements ApplicationRunner {
                     "rohan.iyer@example.com",
                     "9876543214",
                     0,
-                    3
+                    3,
+                    "suv_luxury"
             )
     );
 
@@ -113,8 +134,8 @@ public class DemoSeeder implements ApplicationRunner {
 
     public void seedDemoVehicles() {
         log.info("demo.seed-on-startup is enabled. Seeding identity and consent demo data...");
-        LocalDate today = LocalDate.now();
-        Instant now = Instant.now();
+        LocalDate today = LocalDate.now(clock.withZone(zoneId));
+        Instant now = Instant.now(clock);
 
         for (DemoVehicleSeed seed : DEMO_VEHICLES) {
             String policyId = UUID.nameUUIDFromBytes(
@@ -144,7 +165,8 @@ public class DemoSeeder implements ApplicationRunner {
                         regDate.toString(),
                         owner,
                         "VERIFIED",
-                        now
+                        now,
+                        seed.vehicleSegmentId()
                 );
 
                 ConsentRecord consent = new ConsentRecord(

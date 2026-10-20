@@ -10,6 +10,7 @@ Standard library only.
 import os
 import sys
 import json
+import datetime
 import urllib.request
 import urllib.error
 
@@ -226,9 +227,10 @@ def run_parity_suite():
     print("=================================================================")
 
     # 1. Register vehicle
+    reg_date_3yr = (datetime.date.today() - datetime.timedelta(days=3 * 365)).isoformat()
     reg_body = {
         "rc_number": "KA01PARITY01",
-        "registration_date": "2023-01-01",
+        "registration_date": reg_date_3yr,
         "owner_details": {
             "full_name": "Parity Owner",
             "email": "parity@example.com",
@@ -286,6 +288,14 @@ def run_parity_suite():
             f"{GATEWAY_URL}/advisory/api/v1/advisories/{vid}",
             method="GET",
         )
+
+    # 5b. Vehicle Catalogue
+    check_parity(
+        "Vehicle Catalogue (GET /vehicle-catalogue)",
+        f"{PRICING_DIRECT}/vehicle-catalogue",
+        f"{GATEWAY_URL}/pricing/api/v1/vehicle-catalogue",
+        method="GET",
+    )
 
     # 6. FNOL (mechanical_failure for b2c3...) and get claim
     b2c3_id = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
@@ -365,6 +375,7 @@ def run_parity_suite():
     print("STEP 2: BROWSER PREFLIGHTS (OPTIONS)")
     print("=================================================================")
     check_preflight("Quote", f"{GATEWAY_URL}/pricing/api/v1/quote/{v1_id}", "POST")
+    check_preflight("Vehicle Catalogue", f"{GATEWAY_URL}/pricing/api/v1/vehicle-catalogue", "GET")
     check_preflight("Consent", f"{GATEWAY_URL}/identity/api/v1/vehicles/{v1_id}/consent", "PUT")
     check_preflight("FNOL", f"{GATEWAY_URL}/claims/api/v1/fnol", "POST")
     check_preflight("DTC Readings", f"{GATEWAY_URL}/maintenance/api/v1/dtc-readings", "POST")

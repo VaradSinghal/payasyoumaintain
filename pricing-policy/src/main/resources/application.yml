@@ -22,6 +22,17 @@ services:
   maintenance-url: ${MAINTENANCE_URL:http://localhost:8083/api/v1}
   scoring-url: ${SCORING_URL:http://localhost:8084}
 
+pricing:
+  timezone: Asia/Kolkata
+  profile-cache-ttl-minutes: 60
+  # demo data, replaced by a real prior-policy lookup
+  demo-ncb:
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890": 0.20
+    "b2c3d4e5-f6a7-8901-bcde-f12345678901": 0.10
+    "c3d4e5f6-a7b8-9012-cdef-123456789012": 0.00
+    "d4e5f6a7-b8c9-0123-defa-234567890123": 0.25
+    "e5f6a7b8-c9d0-1234-efab-345678901234": 0.00
+
 management:
   endpoints:
     web:

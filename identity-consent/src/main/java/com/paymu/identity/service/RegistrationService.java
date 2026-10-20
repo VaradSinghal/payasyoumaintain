@@ -33,7 +33,8 @@ public class RegistrationService {
                 request.registrationDate().toString(),
                 request.ownerDetails(),
                 kycStatus,
-                Instant.now()
+                Instant.now(),
+                request.vehicleSegmentId()
         );
         
         registrations.put(vehicleId, registration);

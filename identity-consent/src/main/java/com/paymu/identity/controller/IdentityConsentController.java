@@ -1,17 +1,24 @@
 package com.paymu.identity.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.ValidationMessage;
 import com.paymu.identity.model.ConsentRecord;
 import com.paymu.identity.model.ConsentUpdateRequest;
 import com.paymu.identity.model.VehicleRegistration;
 import com.paymu.identity.model.VehicleRegistrationRequest;
 import com.paymu.identity.service.RegistrationService;
+import com.paymu.identity.service.SchemaValidationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -19,13 +26,44 @@ import java.util.UUID;
 public class IdentityConsentController {
 
     private final RegistrationService registrationService;
+    private final SchemaValidationService schemaValidationService;
+    private final ObjectMapper objectMapper;
+    private final Clock clock;
 
-    public IdentityConsentController(RegistrationService registrationService) {
+    public IdentityConsentController(
+            RegistrationService registrationService,
+            SchemaValidationService schemaValidationService,
+            ObjectMapper objectMapper,
+            Clock clock) {
         this.registrationService = registrationService;
+        this.schemaValidationService = schemaValidationService;
+        this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @PostMapping("/vehicles")
-    public ResponseEntity<VehicleRegistration> registerVehicle(@Valid @RequestBody VehicleRegistrationRequest request) {
+    public ResponseEntity<?> registerVehicle(@RequestBody JsonNode rawJson) {
+        Set<ValidationMessage> errors = schemaValidationService.validateRegistration(rawJson);
+        if (!errors.isEmpty()) {
+            List<String> messages = errors.stream().map(ValidationMessage::getMessage).toList();
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "INVALID_REQUEST",
+                    "message", "Schema validation failed: " + String.join(", ", messages),
+                    "timestamp", Instant.now(clock).toString()
+            ));
+        }
+
+        VehicleRegistrationRequest request;
+        try {
+            request = objectMapper.treeToValue(rawJson, VehicleRegistrationRequest.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "INVALID_REQUEST",
+                    "message", "Malformed request body: " + e.getMessage(),
+                    "timestamp", Instant.now(clock).toString()
+            ));
+        }
+
         VehicleRegistration registration = registrationService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(registration.mask());
     }

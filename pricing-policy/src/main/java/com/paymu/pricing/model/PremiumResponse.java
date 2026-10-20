@@ -18,7 +18,8 @@ public record PremiumResponse(
         @JsonProperty("valid_until") String validUntil,
         @JsonProperty("computed_at") String computedAt,
         @JsonProperty("methodology_note") String methodologyNote,
-        @JsonProperty("score_detail") ScoreDetail scoreDetail
+        @JsonProperty("score_detail") ScoreDetail scoreDetail,
+        @JsonProperty("pricing_basis") PricingBasis pricingBasis
 ) {
     public record ScoreDetail(
             @JsonProperty("usage_score") Double usageScore,
