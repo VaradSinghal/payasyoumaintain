@@ -2,9 +2,12 @@ package com.paymu.claims.controller;
 
 import com.paymu.claims.model.FnolRequest;
 import com.paymu.claims.model.FnolResponse;
+import com.paymu.claims.model.PolicyBindingResult;
 import com.paymu.claims.model.RecallStatus;
 import com.paymu.claims.model.ServiceTimeline;
 import com.paymu.claims.service.ClaimStore;
+import com.paymu.claims.service.IdentityClient;
+import com.paymu.claims.service.IncidentDateValidator;
 import com.paymu.claims.service.MaintenanceClient;
 import com.paymu.claims.service.TriageService;
 import jakarta.validation.Valid;
@@ -35,13 +38,19 @@ public class ClaimsController {
 
     private final TriageService triageService;
     private final MaintenanceClient maintenanceClient;
+    private final IdentityClient identityClient;
+    private final IncidentDateValidator incidentDateValidator;
     private final ClaimStore claimStore;
 
     public ClaimsController(TriageService triageService,
                             MaintenanceClient maintenanceClient,
+                            IdentityClient identityClient,
+                            IncidentDateValidator incidentDateValidator,
                             ClaimStore claimStore) {
         this.triageService = triageService;
         this.maintenanceClient = maintenanceClient;
+        this.identityClient = identityClient;
+        this.incidentDateValidator = incidentDateValidator;
         this.claimStore = claimStore;
     }
 
@@ -49,9 +58,10 @@ public class ClaimsController {
      * Submit a First Notice of Loss.
      *
      * <ol>
-     *   <li>Fetches the vehicle's service timeline from maintenance-vehicle-health-ingestion.</li>
-     *   <li>Fetches the vehicle's structured recall status from the same service.</li>
-     *   <li>Runs the triage rule against the FNOL, timeline, and recall status.</li>
+     *   <li>Validates that incident_date is a valid ISO date, not in the future, and within max age.</li>
+     *   <li>Verifies policy binding against identity-consent GET /vehicles/{vehicleId}.</li>
+     *   <li>Fetches the vehicle's service timeline and structured recall status from maintenance service.</li>
+     *   <li>Runs the triage rule against the FNOL, timeline, and recall status (forcing MANUAL_REVIEW if binding unverified).</li>
      *   <li>Persists and returns the triage result.</li>
      * </ol>
      *
@@ -62,10 +72,15 @@ public class ClaimsController {
     public ResponseEntity<FnolResponse> submitFnol(@Valid @RequestBody FnolRequest request) {
         log.info("FNOL received for vehicle {} — cause: {}", request.vehicleId(), request.claimedCause());
 
+        incidentDateValidator.validate(request.incidentDate());
+
+        PolicyBindingResult binding = identityClient.verifyPolicyBinding(request.vehicleId(), request.policyId());
+        boolean isUnverified = (binding == PolicyBindingResult.UNVERIFIED);
+
         ServiceTimeline timeline = maintenanceClient.fetchTimeline(request.vehicleId());
         RecallStatus    recall   = maintenanceClient.fetchRecallStatus(request.vehicleId());
 
-        TriageService.TriageResult triage = triageService.triage(request, timeline, recall);
+        TriageService.TriageResult triage = triageService.triage(request, timeline, recall, isUnverified);
         FnolResponse response = claimStore.save(request, triage);
 
         log.info("FNOL {} → {} for vehicle {}", response.claimId(),

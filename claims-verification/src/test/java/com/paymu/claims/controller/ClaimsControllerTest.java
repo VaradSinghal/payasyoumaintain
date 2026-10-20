@@ -1,8 +1,12 @@
 package com.paymu.claims.controller;
 
+import com.paymu.claims.exception.PolicyVehicleMismatchException;
+import com.paymu.claims.exception.VehicleNotRegisteredException;
+import com.paymu.claims.model.PolicyBindingResult;
 import com.paymu.claims.model.RecallStatus;
 import com.paymu.claims.model.ServiceTimeline;
 import com.paymu.claims.service.ClaimStore;
+import com.paymu.claims.service.IdentityClient;
 import com.paymu.claims.service.MaintenanceClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,6 +18,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,9 +43,13 @@ class ClaimsControllerTest {
     @MockBean
     private MaintenanceClient maintenanceClient;
 
+    @MockBean
+    private IdentityClient identityClient;
+
     @BeforeEach
     void setUp() {
         claimStore.clear();
+        when(identityClient.verifyPolicyBinding(anyString(), anyString())).thenReturn(PolicyBindingResult.VERIFIED);
     }
 
     @Test
@@ -196,5 +206,149 @@ class ClaimsControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.triage_decision").value("MANUAL_REVIEW"))
                 .andExpect(jsonPath("$.maintenance_signal").value("recall status unavailable."));
+    }
+
+    @Test
+    @DisplayName("POST /fnol with policy-vehicle mismatch returns 422 and does not reveal real policy ID")
+    void submitFnol_policyMismatch_returns422() throws Exception {
+        String realPolicyId = "c4632682-d406-3102-86b7-6a22ef09af5d";
+        String mismatchedPolicyId = "00000000-0000-0000-0000-000000000000";
+        when(identityClient.verifyPolicyBinding(anyString(), anyString())).thenThrow(
+                new PolicyVehicleMismatchException("The policy ID provided does not match the active policy registered for vehicle a1b2c3d4-e5f6-7890-abcd-ef1234567890.")
+        );
+
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "%s",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Accident.",
+                    "claimed_cause": "collision"
+                }
+                """.formatted(mismatchedPolicyId);
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("POLICY_VEHICLE_MISMATCH"))
+                .andExpect(jsonPath("$.message").value(not(containsString(realPolicyId))))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol for unregistered vehicle returns 422 VEHICLE_NOT_REGISTERED")
+    void submitFnol_vehicleNotRegistered_returns422() throws Exception {
+        when(identityClient.verifyPolicyBinding(anyString(), anyString())).thenThrow(
+                new VehicleNotRegisteredException("Vehicle a1b2c3d4-e5f6-7890-abcd-ef1234567890 is not registered.")
+        );
+
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Accident.",
+                    "claimed_cause": "collision"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("VEHICLE_NOT_REGISTERED"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with future incident_date returns 422 INVALID_INCIDENT_DATE")
+    void submitFnol_futureIncidentDate_returns422() throws Exception {
+        String tomorrow = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1).toString();
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "%s",
+                    "incident_description": "Accident.",
+                    "claimed_cause": "collision"
+                }
+                """.formatted(tomorrow);
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_INCIDENT_DATE"))
+                .andExpect(jsonPath("$.message").value(containsString("future")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with incident_date older than max age returns 422 INVALID_INCIDENT_DATE")
+    void submitFnol_incidentDateTooOld_returns422() throws Exception {
+        String pastDate = LocalDate.now().minusDays(400).toString();
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "%s",
+                    "incident_description": "Accident.",
+                    "claimed_cause": "collision"
+                }
+                """.formatted(pastDate);
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_INCIDENT_DATE"))
+                .andExpect(jsonPath("$.message").value(containsString("older than")))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with invalid date format returns 422 INVALID_INCIDENT_DATE")
+    void submitFnol_invalidDateFormat_returns422() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "invalid-date",
+                    "incident_description": "Accident.",
+                    "claimed_cause": "collision"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_INCIDENT_DATE"))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with unverified policy binding forces MANUAL_REVIEW and policy_binding_unverified triage reason even for collision")
+    void submitFnol_unverifiedBinding_forcesManualReviewForCollision() throws Exception {
+        when(identityClient.verifyPolicyBinding(anyString(), anyString())).thenReturn(PolicyBindingResult.UNVERIFIED);
+
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Collision on expressway.",
+                    "claimed_cause": "collision"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.triage_decision").value("MANUAL_REVIEW"))
+                .andExpect(jsonPath("$.triage_reasons", hasItem("policy_binding_unverified")));
     }
 }

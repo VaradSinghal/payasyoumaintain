@@ -131,6 +131,33 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(body);
     }
 
+    @ExceptionHandler(VehicleNotRegisteredException.class)
+    public ResponseEntity<Map<String, Object>> handleVehicleNotRegistered(VehicleNotRegisteredException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "VEHICLE_NOT_REGISTERED");
+        body.put("message", ex.getMessage());
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
+    @ExceptionHandler(PolicyVehicleMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handlePolicyMismatch(PolicyVehicleMismatchException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "POLICY_VEHICLE_MISMATCH");
+        body.put("message", ex.getMessage());
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
+    @ExceptionHandler(InvalidIncidentDateException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidIncidentDate(InvalidIncidentDateException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "INVALID_INCIDENT_DATE");
+        body.put("message", ex.getMessage());
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         Map<String, Object> body = new LinkedHashMap<>();

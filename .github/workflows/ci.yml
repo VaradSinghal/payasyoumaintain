@@ -8,7 +8,7 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: ["**"]
 
@@ -153,8 +153,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install check-jsonschema
-        run: pip install check-jsonschema
+      - name: Install check-jsonschema and jsonschema
+        run: pip install check-jsonschema jsonschema
 
       - name: Validate schemas against JSON Schema meta-schema
         run: |
@@ -176,3 +176,6 @@ jobs:
             exit 1
           fi
           echo "✅  All schemas are valid."
+
+      - name: Validate fixtures against contracts
+        run: python scripts/validate_fixtures.py
