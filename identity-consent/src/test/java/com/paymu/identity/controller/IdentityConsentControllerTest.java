@@ -10,6 +10,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -305,21 +311,15 @@ class IdentityConsentControllerTest {
     }
 
     @Test
-    @DisplayName("Boundary Validation: Real app registration fixture validates and registers with 201")
-    void registerVehicle_realFixture_returns201() throws Exception {
-        String fixtureJson = """
-        {
-          "rc_number": "MH12AB1234",
-          "registration_date": "2024-01-15",
-          "owner_details": {
-            "full_name": "PayAsUMaintain User",
-            "kyc_document_number": "ABCDE1234F",
-            "kyc_document_type": "PAN",
-            "email": "user@payasumaintain.com",
-            "phone_number": "9876543210"
-          }
+    @DisplayName("Boundary Validation: Real app registration fixture file validates and registers with 201")
+    void registerVehicle_realFixtureFile_returns201() throws Exception {
+        Path fixturePath = Path.of("../mobile_app/test/fixtures/requests/registration_request.json");
+        String fixtureJson;
+        if (Files.exists(fixturePath)) {
+            fixtureJson = Files.readString(fixturePath);
+        } else {
+            fixtureJson = Files.readString(Path.of("mobile_app/test/fixtures/requests/registration_request.json"));
         }
-        """;
 
         mockMvc.perform(post("/vehicles")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -327,6 +327,7 @@ class IdentityConsentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.vehicle_id").isNotEmpty())
                 .andExpect(jsonPath("$.policy_id").isNotEmpty())
+                .andExpect(jsonPath("$.rc_number").value("MH12AB1234"))
                 .andExpect(jsonPath("$.kyc_status").value("VERIFIED"));
     }
 
@@ -349,6 +350,30 @@ class IdentityConsentControllerTest {
         mockMvc.perform(post("/vehicles")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(invalidJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message", containsString("Schema validation failed")));
+    }
+
+    @Test
+    @DisplayName("Boundary Validation: Request with wrong type for email rejected with 400 INVALID_REQUEST")
+    void registerVehicle_invalidEmailType_returns400() throws Exception {
+        String invalidEmailJson = """
+        {
+          "rc_number": "MH12AB1234",
+          "registration_date": "2024-01-15",
+          "owner_details": {
+            "full_name": "Test User",
+            "kyc_document_number": "ABCDE1234F",
+            "email": 123,
+            "phone_number": "9876543210"
+          }
+        }
+        """;
+
+        mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidEmailJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message", containsString("Schema validation failed")));
@@ -385,5 +410,128 @@ class IdentityConsentControllerTest {
         mockMvc.perform(get("/vehicles/" + vehicleId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.vehicle_segment_id").value("sedan_mid"));
+    }
+
+    @Test
+    @DisplayName("Boundary Validation: Registration without vehicle_segment_id stores and returns null")
+    void registerVehicle_withoutVehicleSegmentId_storesAndReturnsNull() throws Exception {
+        String jsonWithoutSegment = """
+        {
+          "rc_number": "DL01CD8888",
+          "registration_date": "2024-05-10",
+          "owner_details": {
+            "full_name": "No Segment User",
+            "kyc_document_number": "123456789012",
+            "kyc_document_type": "AADHAAR",
+            "email": "nosegment@example.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """;
+
+        String res = mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonWithoutSegment))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.vehicle_segment_id").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+
+        String vehicleId = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(res).get("vehicle_id").asText();
+
+        mockMvc.perform(get("/vehicles/" + vehicleId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.vehicle_segment_id").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Validation: Future registration_date (tomorrow) rejected with 400 INVALID_REQUEST")
+    void registerVehicle_futureDateTomorrow_returns400() throws Exception {
+        LocalDate tomorrow = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusDays(1);
+        String futureJson = String.format("""
+        {
+          "rc_number": "MH12AB9999",
+          "registration_date": "%s",
+          "owner_details": {
+            "full_name": "Future User",
+            "kyc_document_number": "ABCDE1234F",
+            "email": "future@example.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """, tomorrow);
+
+        mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(futureJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message", containsString("cannot be in the future")));
+    }
+
+    @Test
+    @DisplayName("Validation: Future registration_date (next year) rejected with 400 INVALID_REQUEST")
+    void registerVehicle_futureDateNextYear_returns400() throws Exception {
+        LocalDate nextYear = LocalDate.now(ZoneId.of("Asia/Kolkata")).plusYears(1);
+        String futureJson = String.format("""
+        {
+          "rc_number": "MH12AB8888",
+          "registration_date": "%s",
+          "owner_details": {
+            "full_name": "Future User Next Year",
+            "kyc_document_number": "ABCDE1234F",
+            "email": "futureyear@example.com",
+            "phone_number": "9876543210"
+          }
+        }
+        """, nextYear);
+
+        mockMvc.perform(post("/vehicles")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(futureJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message", containsString("cannot be in the future")));
+    }
+
+    @Test
+    @DisplayName("DemoSeeder with fixed Clock: verifies dynamic relative dates and segment assignments")
+    void demoSeeder_fixedClock_verifiesSegmentsAndDates() {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-10-20T10:00:00Z"), ZoneId.of("Asia/Kolkata"));
+        RegistrationService freshRegService = new RegistrationService(new com.paymu.identity.service.MockKycService());
+        com.paymu.identity.service.DemoSeeder fixedSeeder = new com.paymu.identity.service.DemoSeeder(
+                freshRegService,
+                fixedClock,
+                "Asia/Kolkata"
+        );
+
+        fixedSeeder.seedDemoVehicles();
+
+        LocalDate today = LocalDate.now(fixedClock); // 2026-10-20
+
+        var reg1 = freshRegService.getRegistration("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+        org.junit.jupiter.api.Assertions.assertNotNull(reg1);
+        org.junit.jupiter.api.Assertions.assertEquals("sedan_mid", reg1.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusYears(2).toString(), reg1.registrationDate());
+
+        var reg2 = freshRegService.getRegistration("b2c3d4e5-f6a7-8901-bcde-f12345678901");
+        org.junit.jupiter.api.Assertions.assertNotNull(reg2);
+        org.junit.jupiter.api.Assertions.assertEquals("hatchback_compact", reg2.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusYears(4).toString(), reg2.registrationDate());
+
+        var reg3 = freshRegService.getRegistration("c3d4e5f6-a7b8-9012-cdef-123456789012");
+        org.junit.jupiter.api.Assertions.assertNotNull(reg3);
+        org.junit.jupiter.api.Assertions.assertEquals("suv_premium", reg3.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusYears(3).toString(), reg3.registrationDate());
+
+        var reg4 = freshRegService.getRegistration("d4e5f6a7-b8c9-0123-defa-234567890123");
+        org.junit.jupiter.api.Assertions.assertNotNull(reg4);
+        org.junit.jupiter.api.Assertions.assertEquals("sedan_entry", reg4.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusYears(5).toString(), reg4.registrationDate());
+
+        var reg5 = freshRegService.getRegistration("e5f6a7b8-c9d0-1234-efab-345678901234");
+        org.junit.jupiter.api.Assertions.assertNotNull(reg5);
+        org.junit.jupiter.api.Assertions.assertEquals("suv_luxury", reg5.vehicleSegmentId());
+        org.junit.jupiter.api.Assertions.assertEquals(today.minusMonths(3).toString(), reg5.registrationDate());
     }
 }

@@ -183,7 +183,7 @@ Requests a premium quote. Derives pricing basis from registered vehicle segment 
     - `vehicle_age_years`: whole years elapsed from registration date
     - `depreciation_factor`: IRDAI depreciation slab multiplier
     - `idv`: Insured Declared Value (ex_showroom × depreciation_factor)
-    - `ncb_pct`: No Claim Bonus percentage
+    - `ncb_pct`: No Claim Bonus discount in percentage points (e.g. `20.0` for 20%)
   - `503 Service Unavailable`: Returned when identity-consent is unreachable or returns 5xx and no cached profile exists for the vehicle (`{"error":"SERVICE_UNAVAILABLE","message":"...","timestamp":"..."}`). Never invents an unbacked premium.
 
 ---

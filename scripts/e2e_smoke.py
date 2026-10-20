@@ -162,6 +162,7 @@ def main():
             add_result("sedan_mid pricing_basis source == 'registered'", pb_src == "registered", f"Expected 'registered', got {pb_src}")
             add_result("sedan_mid base_premium == 24,960.0", base_p == 24960.0, f"Expected 24960.0, got {base_p}")
             add_result("sedan_mid final_premium == 24,960.00", final_p == 24960.0, f"Expected 24960.0, got {final_p}")
+            add_result("sedan_mid pricing_basis ncb_pct == 0.0", pb.get("ncb_pct") == 0.0, f"Expected 0.0, got {pb.get('ncb_pct')}")
         else:
             add_result("sedan_mid quote response is dict", False, "Invalid quote response")
 
@@ -517,10 +518,20 @@ def main():
     recall2 = score_det2.get("has_open_recall")
     add_result("b2c3... has_open_recall is true", recall2 is True, f"Expected True, got {recall2}")
 
-    # 14b. Five demo quotes pricing_basis sources == "demo_profile"
+    # 14b. Five demo quotes pricing_basis sources == "demo_profile" and ncb_pct in percentage points
+    demo_expected_ncb = {
+        "a1b2": 20.0,
+        "b2c3": 10.0,
+        "c3d4": 0.0,
+        "d4e5": 25.0,
+        "e5f6": 0.0
+    }
     for label, b_demo_q in [("a1b2", b_q1), ("b2c3", b_q2), ("c3d4", b_q3), ("d4e5", b_q4), ("e5f6", b_q5)]:
         src_val = b_demo_q.get("pricing_basis", {}).get("source") if isinstance(b_demo_q, dict) else None
+        ncb_val = b_demo_q.get("pricing_basis", {}).get("ncb_pct") if isinstance(b_demo_q, dict) else None
         add_result(f"Demo vehicle {label} pricing_basis.source == 'demo_profile'", src_val == "demo_profile", f"Expected 'demo_profile', got {src_val}")
+        expected_ncb = demo_expected_ncb[label]
+        add_result(f"Demo vehicle {label} pricing_basis.ncb_pct == {expected_ncb}", ncb_val == expected_ncb, f"Expected {expected_ncb}, got {ncb_val}")
 
     # 15. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
     fnol_upper = {

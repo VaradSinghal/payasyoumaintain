@@ -183,8 +183,9 @@
         "ncb_pct": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1,
-          "description": "No Claim Bonus percentage (e.g. 0.20 for 20%)."
+          "maximum": 100,
+          "description": "No Claim Bonus discount in percentage points (e.g. 20.0 for 20%).",
+          "examples": [20.0]
         }
       },
       "additionalProperties": false

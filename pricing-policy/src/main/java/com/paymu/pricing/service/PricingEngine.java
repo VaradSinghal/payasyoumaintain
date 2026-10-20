@@ -110,19 +110,27 @@ public class PricingEngine {
         VehicleProfileResponse profile = profileLookup.profile();
         LocalDate today = LocalDate.now(clock);
         LocalDate regDate = profile.registrationDate();
-        int ageYears = (regDate != null) ? Math.max(0, Period.between(regDate, today).getYears()) : GENERIC_DEFAULT_AGE_YEARS;
+        int ageYears;
+        if (regDate == null) {
+            ageYears = GENERIC_DEFAULT_AGE_YEARS;
+        } else if (regDate.isAfter(today)) {
+            ageYears = 0;
+        } else {
+            ageYears = Math.max(0, Period.between(regDate, today).getYears());
+        }
         double depFactor = depreciation(ageYears);
 
         String segmentId = profile.vehicleSegmentId();
         Optional<VehicleCatalogueEntry> catalogueEntry = catalogueService.findById(segmentId);
 
+        boolean isDemo = pricingProperties.getDemoNcb().containsKey(vehicleId);
+        double ncbPct = isDemo ? pricingProperties.getDemoNcb().get(vehicleId) : 0.0;
+
         if (catalogueEntry.isPresent()) {
             // Outcome (a): vehicle found with a known segment
             long exShowroom = catalogueEntry.get().exShowroomPriceInr();
             double idv = exShowroom * depFactor;
-            boolean isDemo = pricingProperties.getDemoNcb().containsKey(vehicleId);
             String source = isDemo ? "demo_profile" : "registered";
-            double ncbPct = isDemo ? pricingProperties.getDemoNcb().get(vehicleId) : 0.0;
 
             return new PricingBasis(
                     source,
@@ -137,7 +145,6 @@ public class PricingEngine {
             // Outcome (b): found but segment missing or unknown -> generic_default at 750,000 with REAL age
             long exShowroom = GENERIC_DEFAULT_PRICE_INR;
             double idv = exShowroom * depFactor;
-            double ncbPct = pricingProperties.getDemoNcb().getOrDefault(vehicleId, 0.0);
 
             return new PricingBasis(
                     "generic_default",
@@ -153,12 +160,16 @@ public class PricingEngine {
 
     /**
      * Computes the vehicle age in months from the registration date for scorer input.
+     * Future dates are clamped to 0 months, never negative.
      */
     public int calculateAgeMonths(LocalDate registrationDate) {
         if (registrationDate == null) {
             return GENERIC_DEFAULT_AGE_YEARS * 12;
         }
         LocalDate today = LocalDate.now(clock);
+        if (registrationDate.isAfter(today)) {
+            return 0;
+        }
         int months = (int) Period.between(registrationDate, today).toTotalMonths();
         return Math.max(0, months);
     }
@@ -179,10 +190,11 @@ public class PricingEngine {
         // 2. Base OD premium before NCB
         double basePremiumBeforeNcb = round2(idv * BASE_OD_RATE);
 
-        // 3. NCB discount
+        // 3. NCB discount (ncbPct is in percentage points, e.g. 20.0 for 20%)
         double ncbPct = basis.ncbPct();
-        double ncbAdjPct = -ncbPct * 100;
-        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbPct));
+        double ncbFraction = ncbPct / 100.0;
+        double ncbAdjPct = -ncbPct;
+        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbFraction));
 
         List<DiscountBreakdown> breakdown = new ArrayList<>();
         if (ncbPct > 0) {
@@ -264,10 +276,11 @@ public class PricingEngine {
         // 2. Base OD premium before NCB
         double basePremiumBeforeNcb = round2(idv * BASE_OD_RATE);
 
-        // 3. NCB discount
+        // 3. NCB discount (ncbPct is in percentage points, e.g. 20.0 for 20%)
         double ncbPct = basis.ncbPct();
-        double ncbAdjPct = -ncbPct * 100;
-        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbPct));
+        double ncbFraction = ncbPct / 100.0;
+        double ncbAdjPct = -ncbPct;
+        double basePremiumAfterNcb = round2(basePremiumBeforeNcb * (1 - ncbFraction));
 
         List<DiscountBreakdown> breakdown = new ArrayList<>();
         if (ncbPct > 0) {

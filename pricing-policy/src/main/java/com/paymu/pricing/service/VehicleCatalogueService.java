@@ -36,12 +36,37 @@ public class VehicleCatalogueService {
 
     @PostConstruct
     public void init() {
-        try (InputStream catStream = getClass().getResourceAsStream(CATALOGUE_RESOURCE);
-             InputStream schemaStream = getClass().getResourceAsStream(SCHEMA_RESOURCE)) {
-
+        try (InputStream catStream = getClass().getResourceAsStream(CATALOGUE_RESOURCE)) {
             if (catStream == null) {
                 throw new IllegalStateException("Vehicle catalogue resource not found: " + CATALOGUE_RESOURCE);
             }
+            loadFromStream(catStream);
+        } catch (Exception e) {
+            log.error("Failed to load or validate indicative vehicle catalogue: {}", e.getMessage(), e);
+            throw (e instanceof IllegalStateException ise) ? ise : new IllegalStateException("Startup failed: vehicle catalogue could not be initialized", e);
+        }
+    }
+
+    public void loadFromString(String json) {
+        try {
+            JsonNode catNode = objectMapper.readTree(json);
+            loadFromNode(catNode);
+        } catch (Exception e) {
+            throw (e instanceof IllegalStateException ise) ? ise : new IllegalStateException("Failed to parse vehicle catalogue: " + e.getMessage(), e);
+        }
+    }
+
+    public void loadFromStream(InputStream catStream) {
+        try {
+            JsonNode catNode = objectMapper.readTree(catStream);
+            loadFromNode(catNode);
+        } catch (Exception e) {
+            throw (e instanceof IllegalStateException ise) ? ise : new IllegalStateException("Failed to parse vehicle catalogue: " + e.getMessage(), e);
+        }
+    }
+
+    public void loadFromNode(JsonNode catNode) {
+        try (InputStream schemaStream = getClass().getResourceAsStream(SCHEMA_RESOURCE)) {
             if (schemaStream == null) {
                 throw new IllegalStateException("Vehicle catalogue schema not found: " + SCHEMA_RESOURCE);
             }
@@ -49,7 +74,6 @@ public class VehicleCatalogueService {
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
             JsonSchema schema = schemaFactory.getSchema(schemaStream);
 
-            JsonNode catNode = objectMapper.readTree(catStream);
             Set<ValidationMessage> validationMessages = schema.validate(catNode);
             if (!validationMessages.isEmpty()) {
                 throw new IllegalStateException("Vehicle catalogue failed schema validation: " + validationMessages);
@@ -60,9 +84,18 @@ public class VehicleCatalogueService {
                     new TypeReference<List<VehicleCatalogueEntry>>() {}
             );
 
+            if (entries == null || entries.isEmpty()) {
+                throw new IllegalStateException("Vehicle catalogue cannot be empty");
+            }
+
             Map<String, VehicleCatalogueEntry> map = new LinkedHashMap<>();
             for (VehicleCatalogueEntry entry : entries) {
-                map.put(entry.id(), entry);
+                if (entry.exShowroomPriceInr() <= 0) {
+                    throw new IllegalStateException("ex_showroom_price_inr must be > 0: " + entry.id());
+                }
+                if (map.put(entry.id(), entry) != null) {
+                    throw new IllegalStateException("Duplicate catalogue segment id: " + entry.id());
+                }
             }
 
             this.catalogue = Collections.unmodifiableList(entries);
@@ -70,8 +103,7 @@ public class VehicleCatalogueService {
 
             log.info("Loaded and validated {} indicative vehicle catalogue entries", this.catalogue.size());
         } catch (Exception e) {
-            log.error("Failed to load or validate indicative vehicle catalogue: {}", e.getMessage(), e);
-            throw new IllegalStateException("Startup failed: vehicle catalogue could not be initialized", e);
+            throw (e instanceof IllegalStateException ise) ? ise : new IllegalStateException("Failed to load vehicle catalogue: " + e.getMessage(), e);
         }
     }
 

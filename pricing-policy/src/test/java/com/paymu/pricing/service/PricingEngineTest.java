@@ -42,17 +42,17 @@ class PricingEngineTest {
         properties.setTimezone("Asia/Kolkata");
         properties.setProfileCacheTtlMinutes(60);
         properties.setDemoNcb(Map.of(
-                DEMO_A1B2, 0.20,
-                DEMO_B2C3, 0.10,
-                DEMO_C3D4, 0.00,
-                DEMO_D4E5, 0.25,
-                DEMO_E5F6, 0.00
+                DEMO_A1B2, 20.0,
+                DEMO_B2C3, 10.0,
+                DEMO_C3D4, 0.0,
+                DEMO_D4E5, 25.0,
+                DEMO_E5F6, 0.0
         ));
 
         engine = new PricingEngine(catalogueService, properties, clock);
     }
 
-    // ─── Depreciation Slabs 0 to 6 ──────────────────────────────────────────
+    // ─── Depreciation Slabs 0 to 6 & Age from Registration Date ──────────────
 
     @Test
     @DisplayName("Depreciation slab covers every age from 0 to 6 correctly")
@@ -65,6 +65,63 @@ class PricingEngineTest {
         assertEquals(0.50, engine.depreciation(5), 0.001, "Age 5 -> 0.50");
         assertEquals(0.40, engine.depreciation(6), 0.001, "Age 6 (>5) -> 0.40");
         assertEquals(0.40, engine.depreciation(10), 0.001, "Age 10 (>5) -> 0.40");
+    }
+
+    @Test
+    @DisplayName("Age and slab for every age 0 to 6 derived correctly from registration date")
+    void ageAndSlab_forEveryAge0To6_fromRegistrationDate() {
+        LocalDate today = LocalDate.now(clock);
+        double[] expectedDep = {0.95, 0.85, 0.80, 0.70, 0.60, 0.50, 0.40};
+        long exShowroom = 1_200_000L; // sedan_mid
+
+        for (int age = 0; age <= 6; age++) {
+            LocalDate regDate = today.minusYears(age);
+            String vid = "v-age-" + age;
+            VehicleProfileResponse profile = new VehicleProfileResponse(
+                    vid, "pol-" + age, regDate, "sedan_mid",
+                    "VIN", "MH", "Hyundai", "Verna", "SX", 2026 - age
+            );
+            PricingBasis basis = engine.derivePricingBasis(vid, ProfileLookupResult.found(profile));
+
+            assertEquals(age, basis.vehicleAgeYears(), "Age for " + age + " years ago");
+            assertEquals(expectedDep[age], basis.depreciationFactor(), 0.001, "Depreciation for age " + age);
+            double expectedIdv = exShowroom * expectedDep[age];
+            assertEquals(expectedIdv, basis.idv(), 0.01, "IDV for age " + age);
+
+            int ageMonths = engine.calculateAgeMonths(regDate);
+            assertEquals(age * 12, ageMonths, "Age in months for age " + age);
+        }
+    }
+
+    @Test
+    @DisplayName("Age is never negative: future registration dates treated as age 0 without exception")
+    void futureRegistrationDate_treatedAsAge0_neverNegativeOrException() {
+        LocalDate today = LocalDate.now(clock);
+        String vid = "v-future";
+
+        // 1 day in the future
+        LocalDate tomorrow = today.plusDays(1);
+        VehicleProfileResponse profileTomorrow = new VehicleProfileResponse(
+                vid, "pol-fut-1", tomorrow, "sedan_mid",
+                "VIN", "MH", "Hyundai", "Verna", "SX", 2026
+        );
+        PricingBasis basisTomorrow = assertDoesNotThrow(() ->
+                engine.derivePricingBasis(vid, ProfileLookupResult.found(profileTomorrow)));
+        assertEquals(0, basisTomorrow.vehicleAgeYears(), "Future date must clamp to age 0");
+        assertEquals(0.95, basisTomorrow.depreciationFactor(), 0.001, "Age 0 depreciation must apply");
+        assertEquals(0, engine.calculateAgeMonths(tomorrow), "Age in months must be 0");
+
+        // 2 years in the future
+        LocalDate futureYear = today.plusYears(2);
+        VehicleProfileResponse profileFutureYear = new VehicleProfileResponse(
+                vid, "pol-fut-2", futureYear, "sedan_mid",
+                "VIN", "MH", "Hyundai", "Verna", "SX", 2028
+        );
+        PricingBasis basisFutureYear = assertDoesNotThrow(() ->
+                engine.derivePricingBasis(vid, ProfileLookupResult.found(profileFutureYear)));
+        assertEquals(0, basisFutureYear.vehicleAgeYears(), "Future date next year must clamp to age 0");
+        assertEquals(0.95, basisFutureYear.depreciationFactor(), 0.001);
+        assertEquals(0, engine.calculateAgeMonths(futureYear), "Age in months must be 0");
     }
 
     // ─── Four Outcomes ───────────────────────────────────────────────────────
@@ -96,7 +153,7 @@ class PricingEngineTest {
         );
         PricingBasis basisA1B2 = engine.derivePricingBasis(DEMO_A1B2, ProfileLookupResult.found(profileA1B2));
         assertEquals("demo_profile", basisA1B2.source());
-        assertEquals(0.20, basisA1B2.ncbPct(), 0.001);
+        assertEquals(20.0, basisA1B2.ncbPct(), 0.001);
     }
 
     @Test
@@ -181,6 +238,7 @@ class PricingEngineTest {
         assertEquals(0.700, r1.dynamicMultiplier(), 0.001, "a1b2 dynamic multiplier");
         assertEquals(13977.60, r1.finalPremium(), 0.01, "a1b2 final premium");
         assertEquals("demo_profile", r1.pricingBasis().source());
+        assertEquals(20.0, r1.pricingBasis().ncbPct(), 0.001, "a1b2 ncb_pct");
 
         // 2. b2c3: hatchback_compact, 4yr, 10% NCB -> base 12,480.00, final 12,265.34
         VehicleProfileResponse p2 = new VehicleProfileResponse(
@@ -194,6 +252,7 @@ class PricingEngineTest {
         assertEquals(1.092, r2.dynamicMultiplier(), 0.001, "b2c3 dynamic multiplier");
         assertEquals(12265.34, r2.finalPremium(), 0.01, "b2c3 final premium");
         assertEquals("demo_profile", r2.pricingBasis().source());
+        assertEquals(10.0, r2.pricingBasis().ncbPct(), 0.001, "b2c3 ncb_pct");
 
         // 3. c3d4: suv_premium, 3yr, 0% NCB -> base 27,300.00, final 21,075.60
         VehicleProfileResponse p3 = new VehicleProfileResponse(
@@ -207,6 +266,7 @@ class PricingEngineTest {
         assertEquals(0.772, r3.dynamicMultiplier(), 0.001, "c3d4 dynamic multiplier");
         assertEquals(21075.60, r3.finalPremium(), 0.01, "c3d4 final premium");
         assertEquals("demo_profile", r3.pricingBasis().source());
+        assertEquals(0.0, r3.pricingBasis().ncbPct(), 0.001, "c3d4 ncb_pct");
 
         // 4. d4e5: sedan_entry, 5yr, 25% NCB -> base 11,700.00, final 6,563.70
         VehicleProfileResponse p4 = new VehicleProfileResponse(
@@ -220,6 +280,7 @@ class PricingEngineTest {
         assertEquals(0.748, r4.dynamicMultiplier(), 0.001, "d4e5 dynamic multiplier");
         assertEquals(6563.70, r4.finalPremium(), 0.01, "d4e5 final premium");
         assertEquals("demo_profile", r4.pricingBasis().source());
+        assertEquals(25.0, r4.pricingBasis().ncbPct(), 0.001, "d4e5 ncb_pct");
 
         // 5. e5f6: suv_luxury, 3 months (< 1yr -> 0yr), 0% NCB -> base 44,460.00, final 44,460.00
         VehicleProfileResponse p5 = new VehicleProfileResponse(
@@ -232,6 +293,7 @@ class PricingEngineTest {
         assertEquals(1.000, r5.dynamicMultiplier(), 0.001, "e5f6 dynamic multiplier");
         assertEquals(44460.00, r5.finalPremium(), 0.01, "e5f6 final premium");
         assertEquals("demo_profile", r5.pricingBasis().source());
+        assertEquals(0.0, r5.pricingBasis().ncbPct(), 0.001, "e5f6 ncb_pct");
     }
 
     // ─── Static Path with Cached Profile ─────────────────────────────────────
@@ -253,7 +315,7 @@ class PricingEngineTest {
         assertNotNull(staticResp.pricingBasis());
         assertEquals("demo_profile", staticResp.pricingBasis().source());
         assertEquals(1_200_000L, staticResp.pricingBasis().exShowroomPriceInr());
-        assertEquals(0.20, staticResp.pricingBasis().ncbPct(), 0.001);
+        assertEquals(20.0, staticResp.pricingBasis().ncbPct(), 0.001);
     }
 
     private ScoreResponse score(Double usage, Double maintenance, Double composite) {

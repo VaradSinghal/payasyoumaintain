@@ -57,7 +57,7 @@ class PricingControllerTest {
         properties.setTimezone("Asia/Kolkata");
         properties.setProfileCacheTtlMinutes(60);
         properties.setDemoNcb(Map.of(
-                A1B2_ID, 0.20
+                A1B2_ID, 20.0
         ));
 
         pricingEngine = new PricingEngine(catalogueService, properties, clock);
@@ -140,7 +140,7 @@ class PricingControllerTest {
                 .andExpect(jsonPath("$.pricing_basis.vehicle_age_years").value(2))
                 .andExpect(jsonPath("$.pricing_basis.depreciation_factor").value(0.80))
                 .andExpect(jsonPath("$.pricing_basis.idv").value(960000.0))
-                .andExpect(jsonPath("$.pricing_basis.ncb_pct").value(0.20));
+                .andExpect(jsonPath("$.pricing_basis.ncb_pct").value(20.0));
 
         Mockito.verify(orchestrator).fetchScore(org.mockito.ArgumentMatchers.eq(vehicleId), org.mockito.ArgumentMatchers.anyInt());
     }

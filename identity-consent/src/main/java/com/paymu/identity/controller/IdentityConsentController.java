@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,6 +61,15 @@ public class IdentityConsentController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "INVALID_REQUEST",
                     "message", "Malformed request body: " + e.getMessage(),
+                    "timestamp", Instant.now(clock).toString()
+            ));
+        }
+
+        LocalDate today = LocalDate.now(clock);
+        if (request.registrationDate() != null && request.registrationDate().isAfter(today)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "INVALID_REQUEST",
+                    "message", "registration_date cannot be in the future",
                     "timestamp", Instant.now(clock).toString()
             ));
         }

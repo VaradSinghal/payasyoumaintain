@@ -422,4 +422,35 @@ class DownstreamOrchestratorServiceTest {
         assertNull(result.profile());
         server.verify();
     }
+
+    @Test
+    void fetchProfile_refetchesWhenProfileExpiresFromCache() throws Exception {
+        String vehicleId = "v-refetch";
+        String body = """
+            {
+                "vehicle_id": "v-refetch",
+                "registration_date": "2024-01-01",
+                "vehicle_segment_id": "sedan_mid"
+            }
+            """;
+        server.expect(org.springframework.test.web.client.ExpectedCount.twice(), requestTo("http://identity/vehicles/" + vehicleId))
+                .andRespond(withSuccess(body, org.springframework.http.MediaType.APPLICATION_JSON));
+
+        // First call hits downstream (1st server call)
+        var r1 = service.fetchProfile(vehicleId);
+        assertTrue(r1.isFound());
+        assertEquals("sedan_mid", r1.profile().vehicleSegmentId());
+
+        // Second call within TTL hits cache (0 server calls)
+        var r2 = service.fetchProfile(vehicleId);
+        assertTrue(r2.isFound());
+
+        // Clear cache (simulating TTL expiration)
+        profileCache.clear();
+
+        // Third call refetches from downstream (2nd server call)
+        var r3 = service.fetchProfile(vehicleId);
+        assertTrue(r3.isFound());
+        server.verify();
+    }
 }

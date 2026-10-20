@@ -51,6 +51,46 @@ class VehicleCatalogueServiceTest {
         assertTrue(nullSegment.isEmpty());
     }
 
+    @Test
+    @DisplayName("Catalogue loader fails fast on duplicate segment id")
+    void failsFastOnDuplicateId() {
+        String json = """
+        [
+          {"id": "sedan_mid", "label": "Mid sedan A", "ex_showroom_price_inr": 1200000},
+          {"id": "sedan_mid", "label": "Mid sedan B", "ex_showroom_price_inr": 1300000}
+        ]
+        """;
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> catalogueService.loadFromString(json));
+        assertTrue(ex.getMessage().contains("Duplicate catalogue segment id"), "Message should mention duplicate id: " + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("Catalogue loader fails fast on price <= 0")
+    void failsFastOnPriceZeroOrNegative() {
+        String jsonZero = """
+        [
+          {"id": "sedan_mid", "label": "Mid sedan", "ex_showroom_price_inr": 0}
+        ]
+        """;
+        assertThrows(IllegalStateException.class, () -> catalogueService.loadFromString(jsonZero));
+
+        String jsonNegative = """
+        [
+          {"id": "sedan_mid", "label": "Mid sedan", "ex_showroom_price_inr": -1000}
+        ]
+        """;
+        assertThrows(IllegalStateException.class, () -> catalogueService.loadFromString(jsonNegative));
+    }
+
+    @Test
+    @DisplayName("Catalogue loader fails fast on empty list")
+    void failsFastOnEmptyList() {
+        String json = "[]";
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> catalogueService.loadFromString(json));
+        assertTrue(ex.getMessage().contains("empty") || ex.getMessage().contains("failed schema validation"),
+                "Message should indicate empty catalogue: " + ex.getMessage());
+    }
+
     private void assertEntry(List<VehicleCatalogueEntry> entries, String id, String label, long price) {
         VehicleCatalogueEntry entry = entries.stream()
                 .filter(e -> e.id().equals(id))
