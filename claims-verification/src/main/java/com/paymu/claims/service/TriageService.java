@@ -72,15 +72,39 @@ public class TriageService {
     public TriageResult triage(FnolRequest request,
                                ServiceTimeline timeline,
                                RecallStatus recall) {
+        return triage(request, timeline, recall, false);
+    }
+
+    /**
+     * Determines the triage decision for an FNOL given the service timeline,
+     * recall status, and policy binding verification state.
+     *
+     * @param request                  the incoming FNOL
+     * @param timeline                 service timeline, or {@code null} if unavailable
+     * @param recall                   recall status, or {@code null} if unavailable
+     * @param policyBindingUnverified  true if identity service was unreachable or 5xx
+     * @return triage outcome with reasons
+     */
+    public TriageResult triage(FnolRequest request,
+                               ServiceTimeline timeline,
+                               RecallStatus recall,
+                               boolean policyBindingUnverified) {
         List<String> reasons = new ArrayList<>();
         String maintenanceSignal;
+
+        if (policyBindingUnverified) {
+            reasons.add("policy_binding_unverified");
+        }
 
         // ── Non-mechanical cause → skip all maintenance checks ────────────────
         if (request.claimedCause() != ClaimedCause.MECHANICAL_FAILURE) {
             reasons.add("Claimed cause '" + request.claimedCause().getValue()
                     + "' does not trigger maintenance-correlation check.");
             maintenanceSignal = "Not evaluated — mechanical failure not claimed.";
-            return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
+            TriageDecision decision = policyBindingUnverified
+                    ? TriageDecision.MANUAL_REVIEW
+                    : TriageDecision.STRAIGHT_THROUGH_PROCESSING;
+            return new TriageResult(decision, reasons, maintenanceSignal);
         }
 
         // ── Mechanical failure — evaluate signals with truthful precedence ───
@@ -99,7 +123,7 @@ public class TriageService {
 
         boolean hasCleanService = evaluateCleanService(timeline, reasons);
 
-        // Precedence: open recall > recall unavailable > clean service > none
+        // Precedence: open recall > recall unavailable > clean service > unverified binding > none
         if (hasOpenRecall) {
             maintenanceSignal = "open recall on file.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [open_recall=true]", request.vehicleId());
@@ -111,6 +135,13 @@ public class TriageService {
         } else if (hasCleanService) {
             maintenanceSignal = "clean service within " + cleanServiceWindowDays + "-day window.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [clean_service=true]", request.vehicleId());
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+        } else if (policyBindingUnverified) {
+            reasons.add("Claimed cause is 'mechanical_failure'.");
+            reasons.add("Confirmed no open recall on file and no clean service record found within the last "
+                    + cleanServiceWindowDays + " days.");
+            maintenanceSignal = "No disqualifying maintenance signals found, but policy binding unverified.";
+            log.info("FNOL for vehicle {} → MANUAL_REVIEW [policy_binding_unverified=true]", request.vehicleId());
             return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
         }
 

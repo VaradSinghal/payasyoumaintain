@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import uuid
+import datetime
 import urllib.request
 import urllib.error
 
@@ -206,12 +207,81 @@ def main():
     else:
         add_result("GET claim", False, "Invalid FNOL response body")
 
-    # 9. Synthetic data seeding assertions
+    # Demo vehicles
     v1 = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     v2 = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
     v3 = "c3d4e5f6-a7b8-9012-cdef-123456789012"
     v4 = "d4e5f6a7-b8c9-0123-defa-234567890123"
     v5 = "e5f6a7b8-c9d0-1234-efab-345678901234"
+
+    # FNOL policy binding & incident date smoke steps
+    st_v1, b_v1 = request(f"{identity_url}/vehicles/{v1}")
+    assert_status("GET v1 identity", st_v1, 200, b_v1)
+    v1_policy_id = b_v1.get("policy_id") if isinstance(b_v1, dict) else None
+
+    # a1b2 with its real policy_id -> 201
+    fnol_a1b2 = {
+        "vehicle_id": v1,
+        "policy_id": v1_policy_id,
+        "incident_date": "2026-10-11",
+        "incident_description": "Minor dent in parking lot",
+        "claimed_cause": "collision"
+    }
+    st_a1b2, b_a1b2 = request(f"{claims_url}/fnol", method="POST", data=fnol_a1b2)
+    assert_status("FNOL a1b2 with real policy_id -> 201", st_a1b2, 201, b_a1b2)
+
+    # b2c3 filed under a1b2's policy_id -> 422 POLICY_VEHICLE_MISMATCH
+    fnol_mismatch = {
+        "vehicle_id": v2,
+        "policy_id": v1_policy_id,
+        "incident_date": "2026-10-11",
+        "incident_description": "Rear bumper tap",
+        "claimed_cause": "collision"
+    }
+    st_mis, b_mis = request(f"{claims_url}/fnol", method="POST", data=fnol_mismatch)
+    assert_status("FNOL b2c3 filed under a1b2's policy_id -> 422", st_mis, 422, b_mis)
+    add_result("FNOL mismatch error == POLICY_VEHICLE_MISMATCH", isinstance(b_mis, dict) and b_mis.get("error") == "POLICY_VEHICLE_MISMATCH", f"Expected error POLICY_VEHICLE_MISMATCH, got {b_mis}")
+
+    # random valid uuid vehicle -> 422 VEHICLE_NOT_REGISTERED
+    rand_uuid = str(uuid.uuid4())
+    fnol_unreg = {
+        "vehicle_id": rand_uuid,
+        "policy_id": v1_policy_id,
+        "incident_date": "2026-10-11",
+        "incident_description": "Glass chip",
+        "claimed_cause": "collision"
+    }
+    st_unreg, b_unreg = request(f"{claims_url}/fnol", method="POST", data=fnol_unreg)
+    assert_status("FNOL random vehicle uuid -> 422", st_unreg, 422, b_unreg)
+    add_result("FNOL unregistered error == VEHICLE_NOT_REGISTERED", isinstance(b_unreg, dict) and b_unreg.get("error") == "VEHICLE_NOT_REGISTERED", f"Expected error VEHICLE_NOT_REGISTERED, got {b_unreg}")
+
+    # incident_date tomorrow -> 422
+    tomorrow_str = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+    fnol_fut = {
+        "vehicle_id": v1,
+        "policy_id": v1_policy_id,
+        "incident_date": tomorrow_str,
+        "incident_description": "Future incident",
+        "claimed_cause": "collision"
+    }
+    st_fut, b_fut = request(f"{claims_url}/fnol", method="POST", data=fnol_fut)
+    assert_status("FNOL incident_date tomorrow -> 422", st_fut, 422, b_fut)
+    add_result("FNOL tomorrow error == INVALID_INCIDENT_DATE", isinstance(b_fut, dict) and b_fut.get("error") == "INVALID_INCIDENT_DATE", f"Expected error INVALID_INCIDENT_DATE, got {b_fut}")
+
+    # incident date 400 days ago -> 422
+    past_400_str = (datetime.date.today() - datetime.timedelta(days=400)).isoformat()
+    fnol_old = {
+        "vehicle_id": v1,
+        "policy_id": v1_policy_id,
+        "incident_date": past_400_str,
+        "incident_description": "Old incident",
+        "claimed_cause": "collision"
+    }
+    st_old, b_old = request(f"{claims_url}/fnol", method="POST", data=fnol_old)
+    assert_status("FNOL incident_date 400 days ago -> 422", st_old, 422, b_old)
+    add_result("FNOL 400 days ago error == INVALID_INCIDENT_DATE", isinstance(b_old, dict) and b_old.get("error") == "INVALID_INCIDENT_DATE", f"Expected error INVALID_INCIDENT_DATE, got {b_old}")
+
+    # 9. Synthetic data seeding assertions
 
     # Aggregates and timeline non-empty for first 4 vehicles
     first_four_ok = True
@@ -352,7 +422,7 @@ def main():
     # 15. FNOL bad enum checks: "MECHANICAL_FAILURE" -> 400 and "bogus" -> 400
     fnol_upper = {
         "vehicle_id": v1,
-        "policy_id": policy_id,
+        "policy_id": v1_policy_id,
         "incident_date": "2026-10-08",
         "incident_description": "Engine died",
         "claimed_cause": "MECHANICAL_FAILURE"
@@ -362,7 +432,7 @@ def main():
 
     fnol_bogus = {
         "vehicle_id": v1,
-        "policy_id": policy_id,
+        "policy_id": v1_policy_id,
         "incident_date": "2026-10-08",
         "incident_description": "Engine died",
         "claimed_cause": "bogus"
