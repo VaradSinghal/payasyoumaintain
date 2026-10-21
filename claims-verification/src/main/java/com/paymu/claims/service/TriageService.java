@@ -3,10 +3,13 @@ package com.paymu.claims.service;
 import com.paymu.claims.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +27,7 @@ import java.util.List;
  *       {@code has_open_recall: true}.</li>
  * </ol>
  * <p>Both conditions are evaluated independently and produce separate entries
- * in {@code triage_reasons} so investigators can see exactly what triggered
+ * in {@code triage_reasons} and {@code triage_reason_codes} so investigators can see exactly what triggered
  * the flag.</p>
  *
  * <h3>What "clean" means</h3>
@@ -57,8 +60,27 @@ public class TriageService {
     private static final List<String> DEFECT_KEYWORDS =
             List.of("critically overdue", "worn", "defect", "failed");
 
-    @Value("${claims.clean-service-window-days:90}")
-    private int cleanServiceWindowDays;
+    private final int cleanServiceWindowDays;
+    private final ZoneId zoneId;
+    private final Clock clock;
+
+    @Autowired
+    public TriageService(
+            @Value("${claims.clean-service-window-days:90}") int cleanServiceWindowDays,
+            @Value("${claims.timezone:Asia/Kolkata}") String timezone,
+            Clock clock) {
+        this.cleanServiceWindowDays = cleanServiceWindowDays;
+        this.zoneId = ZoneId.of(timezone);
+        this.clock = clock;
+    }
+
+    public TriageService() {
+        this(90, "Asia/Kolkata", Clock.systemUTC());
+    }
+
+    public TriageService(Clock clock, ZoneId zoneId) {
+        this(90, zoneId.getId(), clock);
+    }
 
     /**
      * Determines the triage decision for an FNOL given the service timeline
@@ -90,24 +112,29 @@ public class TriageService {
                                RecallStatus recall,
                                boolean policyBindingUnverified) {
         List<String> reasons = new ArrayList<>();
+        List<String> reasonCodes = new ArrayList<>();
         String maintenanceSignal;
 
         if (policyBindingUnverified) {
             reasons.add("policy_binding_unverified");
+            reasonCodes.add("policy_binding_unverified");
         }
 
         // ── Non-mechanical cause → skip all maintenance checks ────────────────
         if (request.claimedCause() != ClaimedCause.MECHANICAL_FAILURE) {
+            reasonCodes.add("cause_not_mechanical");
             reasons.add("Claimed cause '" + request.claimedCause().getValue()
                     + "' does not trigger maintenance-correlation check.");
             maintenanceSignal = "Not evaluated — mechanical failure not claimed.";
             TriageDecision decision = policyBindingUnverified
                     ? TriageDecision.MANUAL_REVIEW
                     : TriageDecision.STRAIGHT_THROUGH_PROCESSING;
-            return new TriageResult(decision, reasons, maintenanceSignal);
+            return new TriageResult(decision, reasons, reasonCodes, maintenanceSignal);
         }
 
         // ── Mechanical failure — evaluate signals with truthful precedence ───
+        reasonCodes.add("mechanical_failure_claimed");
+
         boolean hasOpenRecall     = (recall != null && recall.hasOpenRecall());
         boolean recallUnavailable = (recall == null);
 
@@ -116,33 +143,40 @@ public class TriageService {
             reasons.add("open_recall_on_file: vehicle has " + recall.recallCount()
                     + " open manufacturer recall(s) — a pending recall increases mechanical failure"
                     + " plausibility and requires investigator review.");
+            reasonCodes.add("open_recall_on_file");
         } else if (recallUnavailable) {
             reasons.add("Claimed cause is 'mechanical_failure'.");
             reasons.add("recall_status_unavailable");
+            reasonCodes.add("recall_status_unavailable");
         }
 
         boolean hasCleanService = evaluateCleanService(timeline, reasons);
+        if (hasCleanService) {
+            reasonCodes.add("recent_clean_service");
+        } else if (!hasOpenRecall && !recallUnavailable) {
+            reasonCodes.add("no_recent_clean_service");
+        }
 
         // Precedence: open recall > recall unavailable > clean service > unverified binding > none
         if (hasOpenRecall) {
             maintenanceSignal = "open recall on file.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [open_recall=true]", request.vehicleId());
-            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, reasonCodes, maintenanceSignal);
         } else if (recallUnavailable) {
             maintenanceSignal = "recall status unavailable.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [recall_unavailable=true]", request.vehicleId());
-            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, reasonCodes, maintenanceSignal);
         } else if (hasCleanService) {
             maintenanceSignal = "clean service within " + cleanServiceWindowDays + "-day window.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [clean_service=true]", request.vehicleId());
-            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, reasonCodes, maintenanceSignal);
         } else if (policyBindingUnverified) {
             reasons.add("Claimed cause is 'mechanical_failure'.");
             reasons.add("Confirmed no open recall on file and no clean service record found within the last "
                     + cleanServiceWindowDays + " days.");
             maintenanceSignal = "No disqualifying maintenance signals found, but policy binding unverified.";
             log.info("FNOL for vehicle {} → MANUAL_REVIEW [policy_binding_unverified=true]", request.vehicleId());
-            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, maintenanceSignal);
+            return new TriageResult(TriageDecision.MANUAL_REVIEW, reasons, reasonCodes, maintenanceSignal);
         }
 
         // ── No disqualifying signals found → plausible, STP ───────────────────
@@ -150,7 +184,7 @@ public class TriageService {
         reasons.add("Confirmed no open recall on file and no clean service record found within the last "
                 + cleanServiceWindowDays + " days — claim is plausible.");
         maintenanceSignal = "No disqualifying maintenance signals found.";
-        return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, maintenanceSignal);
+        return new TriageResult(TriageDecision.STRAIGHT_THROUGH_PROCESSING, reasons, reasonCodes, maintenanceSignal);
     }
 
 
@@ -167,7 +201,8 @@ public class TriageService {
             return false;
         }
 
-        LocalDate windowStart = LocalDate.now().minusDays(cleanServiceWindowDays);
+        LocalDate today = LocalDate.now(clock.withZone(zoneId));
+        LocalDate windowStart = today.minusDays(cleanServiceWindowDays);
         boolean hasRecentCleanService = timeline.events().stream()
                 .filter(e -> parseDateSafe(e.serviceDate()) != null)
                 .filter(e -> !parseDateSafe(e.serviceDate()).isBefore(windowStart))
@@ -218,6 +253,11 @@ public class TriageService {
     public record TriageResult(
             TriageDecision decision,
             List<String> reasons,
+            List<String> reasonCodes,
             String maintenanceSignal
-    ) {}
+    ) {
+        public TriageResult(TriageDecision decision, List<String> reasons, String maintenanceSignal) {
+            this(decision, reasons, List.of(), maintenanceSignal);
+        }
+    }
 }

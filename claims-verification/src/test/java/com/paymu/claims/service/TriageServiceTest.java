@@ -4,7 +4,10 @@ import com.paymu.claims.model.*;
 import org.junit.jupiter.api.*;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -351,5 +354,119 @@ class TriageServiceTest {
             assertTrue(result.reasons().contains("policy_binding_unverified"),
                     "Triage reasons must include 'policy_binding_unverified' for " + cause);
         }
+    }
+
+    // ── Item 6: Clock & Timezone tests ────────────────────────────────────────
+
+    @Test
+    @DisplayName("Clock rollover: at 20:00 UTC (= 01:30 IST next day), 90-day window evaluates against IST date")
+    void testFixedClockAt2000UtcRolloverToIstNextDay() {
+        // 2026-10-20 20:00 UTC is 2026-10-21 01:30 IST
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-10-20T20:00:00Z"), ZoneOffset.UTC);
+        TriageService istTriageService = new TriageService(90, "Asia/Kolkata", fixedClock);
+
+        FnolRequest req = new FnolRequest(
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "policy-001",
+                "2026-10-21",
+                "Engine failure",
+                ClaimedCause.MECHANICAL_FAILURE,
+                List.of(),
+                "Bengaluru"
+        );
+
+        // 91 days before 2026-10-21 is 2026-07-22.
+        // Under UTC (2026-10-20), 2026-07-22 is 90 days ago (inside window).
+        // Under IST (2026-10-21), 2026-07-22 is 91 days ago (outside window).
+        ServiceTimeline.MaintenanceEvent event91DaysAgo = new ServiceTimeline.MaintenanceEvent(
+                "evt-old",
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "2026-07-22",
+                "oil_change",
+                25000,
+                "oem_api",
+                null
+        );
+        ServiceTimeline tlOld = new ServiceTimeline("a1b2c3d4-e5f6-7890-abcd-ef1234567890", 1, "2026-07-22", 25000, List.of(event91DaysAgo));
+
+        TriageService.TriageResult resultOld = istTriageService.triage(req, tlOld, noRecall());
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, resultOld.decision(),
+                "2026-07-22 is 91 days before 2026-10-21 (IST), so it falls outside the 90-day window");
+        assertTrue(resultOld.reasonCodes().contains("no_recent_clean_service"));
+
+        // Service on 2026-07-23 is exactly 90 days before 2026-10-21 (inside window)
+        ServiceTimeline.MaintenanceEvent event90DaysAgo = new ServiceTimeline.MaintenanceEvent(
+                "evt-boundary",
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "2026-07-23",
+                "oil_change",
+                25000,
+                "oem_api",
+                null
+        );
+        ServiceTimeline tlBoundary = new ServiceTimeline("a1b2c3d4-e5f6-7890-abcd-ef1234567890", 1, "2026-07-23", 25000, List.of(event90DaysAgo));
+
+        TriageService.TriageResult resultBoundary = istTriageService.triage(req, tlBoundary, noRecall());
+        assertEquals(TriageDecision.MANUAL_REVIEW, resultBoundary.decision(),
+                "2026-07-23 is exactly 90 days before 2026-10-21 (IST), so it is inside the window");
+        assertTrue(resultBoundary.reasonCodes().contains("recent_clean_service"));
+    }
+
+    // ── Item 6: Reason codes coverage for all paths ───────────────────────────
+
+    @Test
+    @DisplayName("Reason codes: straight-through contains mechanical_failure_claimed and no_recent_clean_service")
+    void reasonCodes_straightThrough() {
+        FnolRequest req = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(req, timeline(), noRecall());
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+        assertEquals(List.of("mechanical_failure_claimed", "no_recent_clean_service"), result.reasonCodes());
+    }
+
+    @Test
+    @DisplayName("Reason codes: clean service contains mechanical_failure_claimed and recent_clean_service")
+    void reasonCodes_cleanService() {
+        FnolRequest req = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        ServiceTimeline tl = timeline(event(30, null));
+        TriageService.TriageResult result = triageService.triage(req, tl, noRecall());
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals(List.of("mechanical_failure_claimed", "recent_clean_service"), result.reasonCodes());
+    }
+
+    @Test
+    @DisplayName("Reason codes: open recall contains mechanical_failure_claimed and open_recall_on_file")
+    void reasonCodes_openRecall() {
+        FnolRequest req = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(req, timeline(), openRecall());
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals(List.of("mechanical_failure_claimed", "open_recall_on_file"), result.reasonCodes());
+    }
+
+    @Test
+    @DisplayName("Reason codes: recall unavailable contains mechanical_failure_claimed and recall_status_unavailable")
+    void reasonCodes_recallUnavailable() {
+        FnolRequest req = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(req, timeline(), null);
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals(List.of("mechanical_failure_claimed", "recall_status_unavailable"), result.reasonCodes());
+    }
+
+    @Test
+    @DisplayName("Reason codes: binding unverified on clean service adds policy_binding_unverified")
+    void reasonCodes_bindingUnverified() {
+        FnolRequest req = fnol(ClaimedCause.MECHANICAL_FAILURE);
+        TriageService.TriageResult result = triageService.triage(req, timeline(), noRecall(), true);
+        assertEquals(TriageDecision.MANUAL_REVIEW, result.decision());
+        assertEquals(List.of("policy_binding_unverified", "mechanical_failure_claimed", "no_recent_clean_service"),
+                result.reasonCodes());
+    }
+
+    @Test
+    @DisplayName("Reason codes: non-mechanical cause contains cause_not_mechanical")
+    void reasonCodes_causeNotMechanical() {
+        FnolRequest req = fnol(ClaimedCause.COLLISION);
+        TriageService.TriageResult result = triageService.triage(req, timeline(), noRecall(), false);
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, result.decision());
+        assertEquals(List.of("cause_not_mechanical"), result.reasonCodes());
     }
 }

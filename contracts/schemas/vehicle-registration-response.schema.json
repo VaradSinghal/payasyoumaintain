@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/vehicle-registration-response/v1.0.0",
+  "title": "Vehicle Registration Response",
+  "description": "Response payload returned by the identity-consent service when registering or retrieving a vehicle registration.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "policy_id",
+    "rc_number",
+    "registration_date",
+    "owner_details",
+    "kyc_status",
+    "registered_at"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "System-assigned unique identifier for the vehicle."
+    },
+    "policy_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "System-assigned unique identifier for the associated policy."
+    },
+    "rc_number": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Vehicle registration certificate (RC) number."
+    },
+    "registration_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Vehicle registration date (ISO-8601 YYYY-MM-DD)."
+    },
+    "vehicle_segment_id": {
+      "type": ["string", "null"],
+      "description": "Catalogue vehicle segment ID if specified, or null."
+    },
+    "owner_details": {
+      "type": "object",
+      "required": [
+        "full_name",
+        "kyc_document_number",
+        "email",
+        "phone_number"
+      ],
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full name of the vehicle owner."
+        },
+        "kyc_document_number": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Masked Aadhaar or PAN number for privacy."
+        },
+        "kyc_document_type": {
+          "type": ["string", "null"],
+          "enum": ["AADHAAR", "PAN", null],
+          "description": "KYC document type."
+        },
+        "email": {
+          "type": "string",
+          "description": "Masked email address."
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "Masked phone number."
+        }
+      },
+      "additionalProperties": false
+    },
+    "kyc_status": {
+      "type": "string",
+      "description": "KYC verification status (e.g. 'VERIFIED')."
+    },
+    "registered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of registration intake."
+    }
+  },
+  "additionalProperties": false
+}

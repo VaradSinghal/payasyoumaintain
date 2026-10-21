@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/fnol-request/v1.0.0",
+  "title": "FNOL Request",
+  "description": "Request payload for submitting a First Notice of Loss (FNOL) claim.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "policy_id",
+    "incident_date",
+    "incident_description",
+    "claimed_cause"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the vehicle involved in the incident."
+    },
+    "policy_id": {
+      "type": "string",
+      "description": "Policy identifier."
+    },
+    "incident_date": {
+      "type": "string",
+      "description": "ISO-8601 date or date-time of the incident."
+    },
+    "incident_description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Free-text description of the incident."
+    },
+    "claimed_cause": {
+      "type": "string",
+      "enum": [
+        "mechanical_failure",
+        "collision",
+        "theft",
+        "natural_disaster",
+        "vandalism",
+        "other"
+      ],
+      "description": "Driver-reported cause of the incident."
+    },
+    "photo_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URIs or storage keys for photos of damage or incident."
+    },
+    "location": {
+      "type": ["string", "null"],
+      "description": "Optional free-text location of the incident."
+    }
+  }
+}

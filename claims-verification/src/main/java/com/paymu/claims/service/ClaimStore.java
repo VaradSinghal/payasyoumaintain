@@ -27,6 +27,7 @@ public class ClaimStore {
                 request.claimedCause(),
                 triage.decision(),
                 triage.reasons(),
+                triage.reasonCodes(),
                 triage.maintenanceSignal(),
                 Instant.now().toString()
         );

@@ -23,6 +23,14 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`trip-aggregate.schema.json`](schemas/trip-aggregate.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, pricing-policy, notification-advisory | Computed per-trip aggregates (speed, distance, harsh braking, hard acceleration) |
 | [`vehicle-catalogue.schema.json`](schemas/vehicle-catalogue.schema.json) | v1.0.0 | pricing-policy | gateway, mobile-app | Indicative vehicle segments and ex-showroom price catalogue |
 | [`vehicle-registration-request.schema.json`](schemas/vehicle-registration-request.schema.json) | v1.0.0 | mobile-app | identity-consent | Request payload for registering vehicle and owner KYC details |
+| [`vehicle-registration-response.schema.json`](schemas/vehicle-registration-response.schema.json) | v1.0.0 | identity-consent | mobile-app, gateway | Response payload for vehicle registration and profile retrieval |
+| [`consent-record.schema.json`](schemas/consent-record.schema.json) | v1.0.0 | identity-consent | mobile-app, pricing-policy, claims-verification, notification-advisory | Tracking consent record for telematics and maintenance |
+| [`consent-update-request.schema.json`](schemas/consent-update-request.schema.json) | v1.0.0 | mobile-app | identity-consent | Request payload to update tracking consent preferences |
+| [`fnol-request.schema.json`](schemas/fnol-request.schema.json) | v1.0.0 | mobile-app | claims-verification | First Notice of Loss claim submission request |
+| [`fnol-response.schema.json`](schemas/fnol-response.schema.json) | v1.0.0 | claims-verification | mobile-app, gateway | FNOL intake triage response and claim status |
+| [`advisory-response.schema.json`](schemas/advisory-response.schema.json) | v1.0.0 | notification-advisory | mobile-app, gateway | Prioritised list of advisories and alerts for vehicle owner |
+| [`service-timeline.schema.json`](schemas/service-timeline.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | claims-verification, risk-scoring-engine, mobile-app | Ordered history of all maintenance and service events |
+| [`error-response.schema.json`](schemas/error-response.schema.json) | v1.0.0 | all services, gateway | clients, mobile-app | Standard error response returned on 4xx/5xx status codes |
 
 ## Versioning Policy
 
@@ -62,6 +70,14 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-20 | `premium-response.schema.json` | v1.2.1 | v1.2.2 | **Patch** | Added optional `pricing_basis` object detailing actuarial profile source, segment ID, ex-showroom price, age in years, depreciation factor, IDV, and NCB percentage (in percentage points, e.g. 20.0 for 20%). |
 | 2026-10-20 | `vehicle-catalogue.schema.json` | — | v1.0.0 | **New** | Introduced vehicle catalogue schema returned by pricing-policy. |
 | 2026-10-20 | `vehicle-registration-request.schema.json` | — | v1.0.0 | **New** | Introduced boundary schema for vehicle registration requests in identity-consent. |
+| 2026-10-20 | `vehicle-registration-response.schema.json` | — | v1.0.0 | **New** | Response contract for vehicle registration and profile queries with masked PII and segment ID. |
+| 2026-10-20 | `consent-record.schema.json` | — | v1.0.0 | **New** | Contract for telematics and maintenance consent state. |
+| 2026-10-20 | `consent-update-request.schema.json` | — | v1.0.0 | **New** | Permissive request schema for updating consent preferences. |
+| 2026-10-20 | `fnol-request.schema.json` | — | v1.0.0 | **New** | Permissive request schema for First Notice of Loss intake. |
+| 2026-10-20 | `fnol-response.schema.json` | — | v1.0.0 | **New** | FNOL intake triage response with stable triage_reason_codes alongside human-readable reasons. |
+| 2026-10-20 | `advisory-response.schema.json` | — | v1.0.0 | **New** | Prioritised list of advisories covering all active advisory types. |
+| 2026-10-20 | `service-timeline.schema.json` | — | v1.0.0 | **New** | Vehicle service timeline contract with strict source enums (oem_api, self_upload, inspection). |
+| 2026-10-20 | `error-response.schema.json` | — | v1.0.0 | **New** | Universal error payload contract for 4xx/5xx responses across all services. |
 
 ### Null semantics in `score.schema.json` (v1.2.0)
 
@@ -89,12 +105,22 @@ Each tech stack should validate at the service boundary:
 contracts/
 ├── README.md
 └── schemas/
-    ├── usage-event.schema.json
-    ├── maintenance-event.schema.json
-    ├── recall-status.schema.json
+    ├── advisory-response.schema.json
+    ├── consent-record.schema.json
+    ├── consent-update-request.schema.json
     ├── dtc-reading.schema.json
-    ├── score.schema.json
+    ├── error-response.schema.json
+    ├── fnol-request.schema.json
+    ├── fnol-response.schema.json
+    ├── maintenance-event.schema.json
     ├── premium-request.schema.json
     ├── premium-response.schema.json
-    └── trip-aggregate.schema.json
+    ├── recall-status.schema.json
+    ├── score.schema.json
+    ├── service-timeline.schema.json
+    ├── trip-aggregate.schema.json
+    ├── usage-event.schema.json
+    ├── vehicle-catalogue.schema.json
+    ├── vehicle-registration-request.schema.json
+    └── vehicle-registration-response.schema.json
 ```
