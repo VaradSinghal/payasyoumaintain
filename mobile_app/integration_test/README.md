@@ -4,7 +4,7 @@ This directory contains the permanent end-to-end integration test (`live_stack_e
 
 ## Scenarios Covered
 
-The test executes scenarios `a` through `h`:
+The test executes scenarios `a` through `k`:
 - **Scenario a**: Demo flow selection ("The Model Citizen") -> displays ₹13,977.60 quote.
 - **Scenario b**: Privacy & tracking toggles turned OFF -> verifies "Tracking is off — standard pricing" card, standard quote ₹19,968.00, and score bars hidden.
 - **Scenario c**: Privacy & tracking toggles restored to ON -> verifies ₹13,977.60 restored and score bars return.
@@ -13,6 +13,9 @@ The test executes scenarios `a` through `h`:
 - **Scenario f**: Vehicle onboarding registration with fictional demo details (sedan_mid, 2 years ago) -> consent toggles default to OFF, shows baseline quote ₹24,960.00, tracking-off card, and "How we priced your vehicle" naming "Mid-size sedan" and "Your registered vehicle"; turning toggles ON removes the card while pricing section still names "Mid-size sedan".
 - **Scenario g**: Switch to "The Overdue Hatchback", file `mechanical_failure` claim -> transitions to claim status displaying `Requires Manual Review` triage outcome, `open_recall_on_file` triage reason, and claim ID.
 - **Scenario h**: Diagnostics manual reading with confirmed code `P0301`, navigate away and back to confirm code persists; submit manual reading with check engine light off (no codes), confirming screen returns to "checked, no faults".
+- **Scenario i**: Register through "Fill demo details" with both consent toggles turned ON; add an accepted service record (`oil_change`, 30 days ago, 15000 km) with all consistency checks passing; verify dashboard shows maintenance score 85 with "Includes self-reported records", usage "Not enough data yet", and premium unchanged at ₹24,960.00.
+- **Scenario j**: Add a second record at 12000 km dated 10 days ago (`tyre_rotation`); verify `Flagged for review` status with `odometer_monotonic` check failing; History screen displays "1 flagged record is not used in your score" notice and "Show flagged" switch that reveals the flagged row labeled "Flagged — not used in scoring".
+- **Scenario k**: Add a rejected record with a date prior to vehicle registration (3 years ago); verify `Rejected` status chip, "Not saved." copy, and failed `date_after_registration` check (also covered in widget tests with fake API).
 
 ## Prerequisites
 

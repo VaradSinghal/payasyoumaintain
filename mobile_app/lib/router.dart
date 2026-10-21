@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers/auth_provider.dart';
+import 'screens/add_service_record_screen.dart';
 import 'screens/claims_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/diagnostics_screen.dart';
@@ -77,6 +78,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/history',
         builder: (context, state) => const HistoryScreen(),
+      ),
+      GoRoute(
+        path: '/add-service-record',
+        builder: (context, state) => const AddServiceRecordScreen(),
       ),
     ],
   );

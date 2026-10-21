@@ -66,6 +66,7 @@ def main() -> int:
         "service-timeline": json.loads((schemas_dir / "service-timeline.schema.json").read_text(encoding="utf-8")),
         "error-response": json.loads((schemas_dir / "error-response.schema.json").read_text(encoding="utf-8")),
         "vehicle-catalogue": json.loads((schemas_dir / "vehicle-catalogue.schema.json").read_text(encoding="utf-8")),
+        "service-record-response": json.loads((schemas_dir / "service-record-response.schema.json").read_text(encoding="utf-8")),
     }
     validators = {k: Draft202012Validator(v) for k, v in schemas.items()}
 
@@ -148,8 +149,10 @@ def main() -> int:
                     schema_name = "fnol-response"
                 elif fname.startswith("vehicle_catalogue_"):
                     schema_name = "vehicle-catalogue"
-                elif any(err in fname for err in ["_400", "_404", "_422", "_500"]) or "error" in fname:
+                elif any(err in fname for err in ["_400", "_403", "_404", "_422", "_500"]) or "error" in fname:
                     schema_name = "error-response"
+                elif fname.startswith("service_record_"):
+                    schema_name = "service-record-response"
 
             if not schema_name:
                 unmapped_files.append((norm_rel_path, "no contract schema defined"))

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/models.dart';
@@ -49,6 +50,7 @@ class DashboardScreen extends ConsumerWidget {
         : null;
 
     return ListView(
+      scrollCacheExtent: const ScrollCacheExtent.viewport(3.0),
       padding: const EdgeInsets.all(16.0),
       children: [
         if (authState.isDemo && demoScenario != null)
@@ -121,6 +123,9 @@ class DashboardScreen extends ConsumerWidget {
           else
             _buildScoresSection(context, scoreDetail),
         ],
+
+        const SizedBox(height: 16),
+        _buildAddServiceRecordCard(context),
 
         const SizedBox(height: 16),
         _buildDiagnosticsShortcut(context),
@@ -376,23 +381,44 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   )
                 else if (detail.healthConfidence == 'unverified_self_reported')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.amber),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Unverified — self-reported only',
-                          style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold),
+                  InkWell(
+                    key: const Key('self_reported_badge'),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Self-reported records'),
+                          content: const Text(
+                            'Self-reported records can raise your health score up to 85 until a verified source confirms them.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              child: const Text('OK'),
+                            ),
+                          ],
                         ),
-                      ],
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.amber),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Includes self-reported records',
+                            style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -652,6 +678,19 @@ class DashboardScreen extends ConsumerWidget {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildAddServiceRecordCard(BuildContext context) {
+    return Card(
+      key: const Key('add_service_record_card'),
+      child: ListTile(
+        leading: const Icon(Icons.build_circle_outlined, color: Colors.blue, size: 28),
+        title: const Text('Add a service record', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Self-report recent maintenance or service entries'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/add-service-record'),
+      ),
     );
   }
 }

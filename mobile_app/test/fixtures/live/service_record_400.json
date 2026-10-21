@@ -1,0 +1,1 @@
+{"timestamp":"2026-10-21T17:27:14.458400814Z","error":"INVALID_REQUEST","message":"Request failed contract schema validation: $.odometer_km: is missing but it is required"}

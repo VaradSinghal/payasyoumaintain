@@ -90,12 +90,14 @@ class FakeIdentityConsentApi extends IdentityConsentApi {
 class FakeMaintenanceApi extends MaintenanceApi {
   MaintenanceTimeline timeline;
   int callCount = 0;
+  bool lastIncludeFlagged = false;
 
   FakeMaintenanceApi(this.timeline);
 
   @override
-  Future<MaintenanceTimeline> getTimeline(String vehicleId) async {
+  Future<MaintenanceTimeline> getTimeline(String vehicleId, {bool includeFlagged = false}) async {
     callCount++;
+    lastIncludeFlagged = includeFlagged;
     return timeline;
   }
 }
@@ -221,7 +223,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('₹6,563.70'), findsOneWidget);
-      expect(find.text('Unverified — self-reported only'), findsOneWidget);
+      expect(find.text('Includes self-reported records'), findsOneWidget);
       expect(find.text('Usage Score'), findsOneWidget);
       expect(find.text('100 / 100'), findsOneWidget);
       expect(find.text('Maintenance Score'), findsOneWidget);
