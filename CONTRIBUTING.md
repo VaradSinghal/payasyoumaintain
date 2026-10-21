@@ -46,3 +46,41 @@ Automated GitHub Actions workflows run on all pull requests and pushes to `main`
   - Runs the live end-to-end smoke suite (`python scripts/e2e_smoke.py`) and gateway route parity suite (`python scripts/gateway_parity.py`).
   - Automatically captures container diagnostic logs (`docker compose logs --no-color --tail=200`) and uploads them as workflow artifacts on failure.
   - *Note*: The stack E2E workflow exercises the live microservices and gateway; it does not boot mobile device emulators or execute Flutter UI integration tests in CI.
+
+## 7. Demo Day
+Before presenting live or demonstrating the app, ensure the in-memory backend microservices match the canonical presentation state documented in `mobile_app/assets/demo/demo_scenario.json`.
+
+### The Two Commands
+1. **Reset to Seeded State & Verify**:
+   ```bash
+   # Standard stack (production gateway port 8080):
+   python scripts/demo_reset.py
+
+   # Development stack (includes direct-port override docker-compose.dev.yml):
+   python scripts/demo_reset.py --dev
+   ```
+2. **Preflight Health & Story Verification (Read-Only)**:
+   ```bash
+   python scripts/demo_preflight.py
+   ```
+
+### When to Run Them
+- **Run `python scripts/demo_reset.py`**:
+  - Immediately before starting a live demo or presentation.
+  - Between demonstration runs when state has been mutated by audience interaction (e.g. toggling tracking consent, registering fresh vehicles, uploading self-reported service records, or submitting FNOL claims).
+  - `demo_reset.py` executes `docker compose restart` (without rebuild or container destruction, ensuring fast and offline execution), waits up to 180 seconds until all microservices report healthy via `/health/*`, and runs `demo_preflight.py`.
+- **Run `python scripts/demo_preflight.py`**:
+  - As a quick, non-destructive health and story audit against an already running stack.
+  - Verifies that all 7 microservice health checks return 200, all five demo vehicles have consent opt-ins enabled and clean timelines (`flagged_count: 0`), catalogue has 6 entries, and quotes/advisories/claim triage match `demo_scenario.json`.
+
+### What a Red Line Means
+When running `demo_preflight.py`, each check outputs a `[PASS]` or `[FAIL]` status. A red `[FAIL]` line indicates an unexpected discrepancy or state drift:
+- **Service Outage**: One or more microservices are unresponsive or returning non-200 on `/health/*`.
+- **Consent Drift**: A demo vehicle's tracking consent was disabled during testing or user exploration.
+- **Timeline Flagged Records**: Residual unverified or flagged maintenance events exist in a demo vehicle's service history (`flagged_count > 0`).
+- **Quote Metric Mismatch**: Base premium, final premium, dynamic multiplier, health status, health confidence, recall presence, data flags, or risk scores deviate from canonical expectations in `demo_scenario.json`.
+- **Advisory Mismatch**: Generated advisories do not match the expected priority types in exact sequence.
+- **Claim Triage Mismatch**: A simulated FNOL submission failed or did not yield the expected triage decision (or missed `open_recall_on_file` for vehicle `b2c3d4e5`).
+
+If any red `[FAIL]` line appears, execute `python scripts/demo_reset.py` (or `python scripts/demo_reset.py --dev`) to reset all in-memory microservices back to clean seeded values.
+
