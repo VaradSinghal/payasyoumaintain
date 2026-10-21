@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/advisory-response/v1.0.0",
+  "title": "Advisory Response",
+  "description": "Prioritised list of advisories and alerts for a vehicle.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "advisories",
+    "generated_at"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The vehicle these advisories apply to."
+    },
+    "advisories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "advisory_type",
+          "priority",
+          "title",
+          "message"
+        ],
+        "properties": {
+          "advisory_type": {
+            "type": "string",
+            "enum": [
+              "OPEN_RECALL",
+              "OVERDUE_SERVICE",
+              "NO_SERVICE_RECORD",
+              "LOW_RISK_SCORE",
+              "SAFE_DRIVING_COMMENDATION",
+              "TRACKING_DISABLED"
+            ],
+            "description": "Machine-readable type key."
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "description": "Display priority."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short headline suitable for notifications."
+          },
+          "message": {
+            "type": "string",
+            "description": "Full plain-language explanation."
+          },
+          "action_url": {
+            "type": ["string", "null"],
+            "description": "Optional deep-link or URL for recommended action."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Prioritised list of advisory messages."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when advisories were evaluated."
+    }
+  },
+  "additionalProperties": false
+}

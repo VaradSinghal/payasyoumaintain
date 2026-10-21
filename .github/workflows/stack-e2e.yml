@@ -1,0 +1,69 @@
+name: Stack E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: stack-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack-e2e:
+    name: "Live Stack E2E"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      COMPOSE_FILE: "docker-compose.yml:docker-compose.dev.yml"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start stack
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait --wait-timeout 300
+
+      - name: Inspect running containers
+        run: docker compose ps
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install jsonschema
+
+      - name: Run E2E smoke tests
+        run: python scripts/e2e_smoke.py
+
+      - name: Run Gateway parity tests
+        run: python scripts/gateway_parity.py
+
+      - name: Run Contract checks
+        run: |
+          pip install jsonschema
+          python scripts/contract_check.py
+
+      - name: Print container diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p diagnostics
+          echo "=== DOCKER COMPOSE PS ==="
+          docker compose ps | tee diagnostics/docker-compose-ps.txt
+          echo "=== DOCKER COMPOSE LOGS (TAIL 200) ==="
+          docker compose logs --no-color --tail=200 | tee diagnostics/docker-compose-logs.txt
+
+      - name: Upload diagnostics artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack-e2e-failure-diagnostics
+          path: diagnostics/
+
+      - name: Teardown stack
+        if: always()
+        run: docker compose down -v

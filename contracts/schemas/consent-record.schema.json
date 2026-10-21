@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/consent-record/v1.0.0",
+  "title": "Consent Record",
+  "description": "Consent status for telematics usage tracking and vehicle maintenance tracking.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "usage_tracking_opt_in",
+    "maintenance_tracking_opt_in",
+    "last_updated"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the vehicle."
+    },
+    "usage_tracking_opt_in": {
+      "type": "boolean",
+      "description": "Whether the owner has opted in to telematics usage tracking."
+    },
+    "maintenance_tracking_opt_in": {
+      "type": "boolean",
+      "description": "Whether the owner has opted in to maintenance tracking."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when consent was last modified."
+    }
+  },
+  "additionalProperties": false
+}

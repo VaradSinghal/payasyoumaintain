@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/consent-update-request/v1.0.0",
+  "title": "Consent Update Request",
+  "description": "Request payload to update telematics and maintenance tracking consent preferences.",
+  "type": "object",
+  "required": [
+    "usage_tracking_opt_in",
+    "maintenance_tracking_opt_in"
+  ],
+  "properties": {
+    "usage_tracking_opt_in": {
+      "type": "boolean",
+      "description": "Whether the owner opts in to telematics usage tracking."
+    },
+    "maintenance_tracking_opt_in": {
+      "type": "boolean",
+      "description": "Whether the owner opts in to maintenance tracking."
+    }
+  }
+}

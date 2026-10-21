@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/service-timeline/v1.0.0",
+  "title": "Service Timeline",
+  "description": "Ordered history of all maintenance and service events for a vehicle.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "total_services",
+    "latest_service_date",
+    "latest_odometer_km",
+    "events"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle."
+    },
+    "total_services": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of maintenance events recorded."
+    },
+    "latest_service_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "ISO-8601 date of the most recent service, or null if no events."
+    },
+    "latest_odometer_km": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Odometer reading in kilometres at most recent service, or null if no events."
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "event_id",
+          "vehicle_id",
+          "service_date",
+          "service_type",
+          "odometer_km",
+          "parts_replaced",
+          "source"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for this maintenance event."
+          },
+          "vehicle_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identifier of the serviced vehicle."
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-8601 date of the service."
+          },
+          "service_type": {
+            "type": "string",
+            "description": "Category of maintenance performed."
+          },
+          "odometer_km": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Odometer reading at the time of service."
+          },
+          "parts_replaced": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["part_name"],
+              "properties": {
+                "part_name": {
+                  "type": "string",
+                  "description": "Name or OEM part number of replaced part."
+                },
+                "part_number": {
+                  "type": "string",
+                  "description": "Manufacturer part number."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Number of units replaced."
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "List of parts replaced."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "oem_api",
+              "self_upload",
+              "inspection"
+            ],
+            "description": "How the maintenance record was sourced."
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "maxLength": 2000,
+            "description": "Free-text technician or customer notes."
+          },
+          "document_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "URIs or references to uploaded service documents."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of maintenance events in reverse chronological order."
+    }
+  },
+  "additionalProperties": false
+}

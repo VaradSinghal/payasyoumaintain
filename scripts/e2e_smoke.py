@@ -285,10 +285,11 @@ def main():
         add_result("History empty check", False, f"Expected [], got {body}")
 
     # 7. FNOL
+    recent_date_str = (datetime.date.today() - datetime.timedelta(days=5)).isoformat()
     fnol = {
         "vehicle_id": vehicle_id,
         "policy_id": policy_id,
-        "incident_date": "2026-10-08T10:00:00Z",
+        "incident_date": recent_date_str,
         "claimed_cause": "mechanical_failure",
         "incident_description": "Engine died"
     }
@@ -322,7 +323,7 @@ def main():
     fnol_a1b2 = {
         "vehicle_id": v1,
         "policy_id": v1_policy_id,
-        "incident_date": "2026-10-11",
+        "incident_date": recent_date_str,
         "incident_description": "Minor dent in parking lot",
         "claimed_cause": "collision"
     }
@@ -333,7 +334,7 @@ def main():
     fnol_mismatch = {
         "vehicle_id": v2,
         "policy_id": v1_policy_id,
-        "incident_date": "2026-10-11",
+        "incident_date": recent_date_str,
         "incident_description": "Rear bumper tap",
         "claimed_cause": "collision"
     }
@@ -346,7 +347,7 @@ def main():
     fnol_unreg = {
         "vehicle_id": rand_uuid,
         "policy_id": v1_policy_id,
-        "incident_date": "2026-10-11",
+        "incident_date": recent_date_str,
         "incident_description": "Glass chip",
         "claimed_cause": "collision"
     }
@@ -537,7 +538,7 @@ def main():
     fnol_upper = {
         "vehicle_id": v1,
         "policy_id": v1_policy_id,
-        "incident_date": "2026-10-08",
+        "incident_date": recent_date_str,
         "incident_description": "Engine died",
         "claimed_cause": "MECHANICAL_FAILURE"
     }
@@ -547,7 +548,7 @@ def main():
     fnol_bogus = {
         "vehicle_id": v1,
         "policy_id": v1_policy_id,
-        "incident_date": "2026-10-08",
+        "incident_date": recent_date_str,
         "incident_description": "Engine died",
         "claimed_cause": "bogus"
     }
