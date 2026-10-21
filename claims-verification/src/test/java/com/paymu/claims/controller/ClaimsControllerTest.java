@@ -80,6 +80,33 @@ class ClaimsControllerTest {
     }
 
     @Test
+    @DisplayName("POST /fnol with claimed_cause 'weather' returns 400 INVALID_REQUEST naming field and allowed values")
+    void submitFnol_weatherCause_returns400() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Hail and thunderstorm damage.",
+                    "claimed_cause": "weather"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
+                .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
     @DisplayName("POST /fnol with uppercase MECHANICAL_FAILURE returns 400 INVALID_REQUEST naming field and allowed values")
     void submitFnol_uppercaseMechanicalFailure_returns400() throws Exception {
         String json = """
@@ -99,6 +126,37 @@ class ClaimsControllerTest {
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
                 .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with claimed_cause as number returns 400 INVALID_REQUEST naming field and allowed values")
+    void submitFnol_claimedCauseAsNumber_returns400() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_date": "2026-10-11",
+                    "incident_description": "Engine stalled.",
+                    "claimed_cause": 12345
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
+                .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
@@ -122,6 +180,10 @@ class ClaimsControllerTest {
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value(containsString("claimed_cause")))
                 .andExpect(jsonPath("$.message").value(containsString("mechanical_failure")))
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
@@ -135,7 +197,35 @@ class ClaimsControllerTest {
                         .content(malformedJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("POST /fnol with missing required field returns 400 INVALID_REQUEST naming field")
+    void submitFnol_missingRequiredField_returns400() throws Exception {
+        String json = """
+                {
+                    "vehicle_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+                    "incident_description": "Engine stalled.",
+                    "claimed_cause": "mechanical_failure"
+                }
+                """;
+
+        mockMvc.perform(post("/fnol")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("incident_date")))
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
@@ -158,7 +248,10 @@ class ClaimsControllerTest {
                         .content(jsonWithWrongType))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.message").value(not(containsString("com."))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Exception"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("Cannot deserialize"))))
+                .andExpect(jsonPath("$.message").value(not(containsString("JSON parse error"))))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 

@@ -43,7 +43,8 @@ public class DtcController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "SCHEMA_VALIDATION_FAILED",
                     "message", "DTC reading failed contract validation.",
-                    "details", errorMessages));
+                    "details", errorMessages,
+                    "timestamp", java.time.Instant.now().toString()));
         }
 
         try {
@@ -54,7 +55,8 @@ public class DtcController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "DESERIALIZATION_FAILED",
-                    "message", e.getMessage()
+                    "message", e.getMessage(),
+                    "timestamp", java.time.Instant.now().toString()
             ));
         }
     }
