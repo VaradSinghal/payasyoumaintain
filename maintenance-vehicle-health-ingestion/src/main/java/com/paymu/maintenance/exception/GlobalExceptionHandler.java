@@ -34,6 +34,30 @@ public class GlobalExceptionHandler {
     }
 
 
+    @ExceptionHandler(VehicleNotRegisteredException.class)
+    public ResponseEntity<Map<String, Object>> handleVehicleNotRegistered(VehicleNotRegisteredException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "VEHICLE_NOT_REGISTERED",
+                "message", ex.getMessage(),
+                "timestamp", Instant.now().toString()));
+    }
+
+    @ExceptionHandler(ConsentRequiredException.class)
+    public ResponseEntity<Map<String, Object>> handleConsentRequired(ConsentRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "CONSENT_REQUIRED",
+                "message", ex.getMessage(),
+                "timestamp", Instant.now().toString()));
+    }
+
+    @ExceptionHandler(IdentityServiceUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleIdentityUnavailable(IdentityServiceUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "error", "SERVICE_UNAVAILABLE",
+                "message", ex.getMessage(),
+                "timestamp", Instant.now().toString()));
+    }
+
     @ExceptionHandler(SchemaValidationException.class)
     public ResponseEntity<Map<String, Object>> handleSchemaValidation(SchemaValidationException ex) {
         return ResponseEntity.badRequest().body(Map.of(

@@ -144,8 +144,33 @@ Common status codes for error responses:
 
 ### 4. Maintenance & Vehicle Health Ingestion Service
 
+#### Submit Self-Reported Service Record
+- **Route**: `POST /maintenance/api/v1/service-records`
+- **Request Schema**: [`service-record-request.schema.json`](contracts/schemas/service-record-request.schema.json)
+- **Response Schema**: [`service-record-response.schema.json`](contracts/schemas/service-record-response.schema.json)
+- **Validation & Checks**:
+  - Request boundary validation against schema (`400 Bad Request` with error `INVALID_REQUEST`).
+  - Vehicle registration check via Identity service: returns `404 Not Found` with `{error: "VEHICLE_NOT_REGISTERED"}` if vehicle is not found; `503 Service Unavailable` if Identity service is unreachable or errors.
+  - Tracking consent check: returns `403 Forbidden` with `{error: "CONSENT_REQUIRED"}` if `maintenance_tracking_opt_in` is false.
+  - Consistency checks evaluated on every submission:
+    - `date_not_future` (hard): service date cannot be in the future (Asia/Kolkata).
+    - `date_after_registration` (hard): service date must be on or after vehicle registration date.
+    - `odometer_monotonic` (soft): odometer must be between surrounding recorded readings.
+    - `odometer_rate_plausible` (soft): km per day against neighbouring readings <= 1000 km/day (minimum gap 1 day).
+    - `not_duplicate` (soft): no matching date, type, odometer, or receipt SHA-256.
+    - `daily_limit` (soft): fewer than 5 self-reported records for this vehicle today (IST).
+- **Status Codes**:
+  - `201 Created`: Plausible record (`accepted` or `flagged`), stored (`stored: true`).
+  - `200 OK`: Hard check failure (`rejected`), not stored (`stored: false`).
+  - `400 Bad Request`: Validation failure or malformed JSON ([`error-response.schema.json`](contracts/schemas/error-response.schema.json)).
+  - `403 Forbidden`: Maintenance consent required ([`error-response.schema.json`](contracts/schemas/error-response.schema.json)).
+  - `404 Not Found`: Vehicle not registered ([`error-response.schema.json`](contracts/schemas/error-response.schema.json)).
+  - `503 Service Unavailable`: Identity service unreachable ([`error-response.schema.json`](contracts/schemas/error-response.schema.json)).
+
 #### Get Service Timeline
 - **Route**: `GET /maintenance/api/v1/timeline/{id}`
+- **Query Parameters**:
+  - `include_flagged` (boolean, optional, default `false`): When `false`, returns only events that are NOT flagged along with `flagged_count`. When `true`, returns all events including flagged ones (with `verification_status`). Server-side consumers (pricing, notification, claims, scorer) call the default form without flagged records.
 - **Request Schema**: *None* (Path parameter `id`: UUID)
 - **Response Schema**: [`service-timeline.schema.json`](contracts/schemas/service-timeline.schema.json)
 - **Status Codes**:
@@ -237,4 +262,8 @@ The following status codes are specified by the API contract but are not yet exe
 1. **No Authentication**: In the current development and demonstration environment, authentication and token validation (e.g., OAuth2/JWT) are not enforced at the API gateway or backend microservices. All allowlisted routes are open. Client applications must treat vehicle identifiers (`vehicle_id`) and claim identifiers (`claim_id`) as sensitive identifiers.
 2. **In-Memory State**: All backend microservices currently utilize in-memory storage implementations (`ConcurrentHashMap` / in-memory collections). Restarting microservice containers resets all runtime modifications back to the default pre-seeded state (the five demo vehicles: `demo_veh_001` through `demo_veh_005`).
 3. **Claims-Consent Architecture Decision**: Claims intake (`POST /api/v1/fnol`) and triage adjudication evaluate policy-vehicle binding, incident dates, and service timelines, but deliberately **do not check user tracking consent** (`usage_tracking_opt_in` / `maintenance_tracking_opt_in`). This is a **design decision pending legal review** (rather than a final legal conclusion): tracking consent is currently architected to govern optional telematics usage ingestion and proactive maintenance advisories/pricing discounts, whereas FNOL intake operates as core policy servicing under the insurance contract. Legal review will confirm the regulatory boundary between core claims adjudication and optional telematics tracking consent.
-4. **Self-Reported Maintenance Fraud Resistance**: While self-reported maintenance records cannot elevate a score above 85, a plausible self-reported record can currently lift an otherwise poor maintenance score up to the unverified 85 cap. Closing this vulnerability requires OEM or verified garage confirmation and OCR invoice/receipt authentication, scheduled for Phase 4.
+4. **Self-Reported Maintenance Fraud Resistance & Credit Cap**:
+   - Vehicles whose records are all self-reported are capped at a health score of 85 (`min(all, 85)`), labeled `unverified_self_reported`.
+   - When at least one trusted OEM API or inspection record exists, the credit cap formula becomes `final = min(all, max(trusted, 85))`. If `final > trusted`, confidence is `unverified_self_reported`; otherwise `verified`.
+   - Remaining Limitation: A plausible fake record can still lift a poor history (e.g. OEM score 45) up to 85, labelled unverified, until a verified source confirms it. Closing this vulnerability requires OEM or verified garage confirmation and OCR invoice/receipt authentication (scheduled for Phase 4).
+5. **Receipt References Only (MVP)**: Receipts aren't stored or read in the MVP: `receipt_ref` and `receipt_sha256` are references only and are not verified against actual document storage.

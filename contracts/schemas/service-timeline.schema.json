@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/service-timeline/v1.0.0",
+  "$id": "https://payasyoumaintain.com/schemas/service-timeline/v1.1.0",
   "title": "Service Timeline",
   "description": "Ordered history of all maintenance and service events for a vehicle.",
   "type": "object",
@@ -31,6 +31,11 @@
       "type": ["integer", "null"],
       "minimum": 0,
       "description": "Odometer reading in kilometres at most recent service, or null if no events."
+    },
+    "flagged_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of flagged self-reported maintenance events for this vehicle."
     },
     "events": {
       "type": "array",
@@ -114,6 +119,14 @@
               "type": "string"
             },
             "description": "URIs or references to uploaded service documents."
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "flagged"
+            ],
+            "description": "Consistency verification status for self-uploaded service records."
           }
         },
         "additionalProperties": false

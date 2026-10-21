@@ -21,6 +21,11 @@ Generated automatically by `scripts/contract_check.py`. Do not edit manually.
 | POST | /identity/api/v1/vehicles | 400 |
 | POST | /maintenance/api/v1/dtc-readings | 200 |
 | POST | /maintenance/api/v1/dtc-readings | 400 |
+| POST | /maintenance/api/v1/service-records | 200 |
+| POST | /maintenance/api/v1/service-records | 201 |
+| POST | /maintenance/api/v1/service-records | 400 |
+| POST | /maintenance/api/v1/service-records | 403 |
+| POST | /maintenance/api/v1/service-records | 404 |
 | POST | /pricing/api/v1/quote/{id} | 200 |
 | PUT | /identity/api/v1/vehicles/{id}/consent | 200 |
 | PUT | /identity/api/v1/vehicles/{id}/consent | 400 |

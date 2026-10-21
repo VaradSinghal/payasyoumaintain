@@ -149,12 +149,17 @@ public class MaintenanceController {
 
     /**
      * Per-vehicle service timeline: ordered history of all maintenance events.
+     * By default excludes flagged events. Passes include_flagged=true to include them.
      */
     @GetMapping("/timeline/{vehicleId}")
-    public ResponseEntity<ServiceTimeline> getTimeline(@PathVariable java.util.UUID vehicleId) {
-        ServiceTimeline timeline = store.getTimeline(vehicleId.toString());
+    public ResponseEntity<ServiceTimeline> getTimeline(
+            @PathVariable java.util.UUID vehicleId,
+            @RequestParam(name = "include_flagged", defaultValue = "false") boolean includeFlagged) {
+        ServiceTimeline timeline = includeFlagged
+                ? store.getTimeline(vehicleId.toString(), true)
+                : store.getTimeline(vehicleId.toString());
         if (timeline == null) {
-            return ResponseEntity.ok(new ServiceTimeline(vehicleId.toString(), 0, null, null, List.of()));
+            return ResponseEntity.ok(new ServiceTimeline(vehicleId.toString(), 0, null, null, List.of(), 0));
         }
         return ResponseEntity.ok(timeline);
     }

@@ -183,7 +183,8 @@ public class SyntheticDataGenerator {
                 parts,
                 "self_upload",
                 notes,
-                List.of(docRef));
+                List.of(docRef),
+                "accepted");
     }
 
     private PartReplaced part(String name, String number, int qty) {

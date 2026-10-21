@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://payasyoumaintain.com/schemas/maintenance-event/v1.0.0",
+  "$id": "https://payasyoumaintain.com/schemas/maintenance-event/v1.1.0",
   "title": "Maintenance Event",
   "description": "A vehicle maintenance or service event ingested by the maintenance-vehicle-health-ingestion service. Represents a single visit to a garage, dealership, or a self-reported service entry.",
   "type": "object",
@@ -95,7 +95,13 @@
         "description": "URI pointing to an uploaded invoice, receipt, or inspection report."
       },
       "description": "References to supporting documents in object storage (optional)."
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": ["accepted", "flagged"],
+      "description": "Consistency verification status for self-uploaded service records."
     }
   },
   "additionalProperties": false
 }
+

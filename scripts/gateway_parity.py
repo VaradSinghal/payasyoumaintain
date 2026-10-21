@@ -333,6 +333,28 @@ def run_parity_suite():
         f"{GATEWAY_URL}/maintenance/api/v1/timeline/{v1_id}",
         method="GET",
     )
+    check_parity(
+        f"Maintenance Timeline include_flagged (GET /timeline/{v1_id}?include_flagged=true)",
+        f"{MAINTENANCE_DIRECT}/timeline/{v1_id}?include_flagged=true",
+        f"{GATEWAY_URL}/maintenance/api/v1/timeline/{v1_id}?include_flagged=true",
+        method="GET",
+    )
+
+    # 7b. Self-Reported Service Records
+    tomorrow_ist = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+    future_record_payload = {
+        "vehicle_id": reg_vid if reg_vid else v1_id,
+        "service_date": tomorrow_ist,
+        "service_type": "oil_change",
+        "odometer_km": 15000,
+    }
+    check_parity(
+        "POST Service Record (POST /service-records)",
+        f"{MAINTENANCE_DIRECT}/service-records",
+        f"{GATEWAY_URL}/maintenance/api/v1/service-records",
+        method="POST",
+        data=future_record_payload,
+    )
 
     # 8. DTC readings (POST, latest, history)
     dtc_payload = {
@@ -379,6 +401,7 @@ def run_parity_suite():
     check_preflight("Consent", f"{GATEWAY_URL}/identity/api/v1/vehicles/{v1_id}/consent", "PUT")
     check_preflight("FNOL", f"{GATEWAY_URL}/claims/api/v1/fnol", "POST")
     check_preflight("DTC Readings", f"{GATEWAY_URL}/maintenance/api/v1/dtc-readings", "POST")
+    check_preflight("Service Records", f"{GATEWAY_URL}/maintenance/api/v1/service-records", "POST")
 
     print("\n=================================================================")
     print("STEP 3: FIVE-STORY TABLE FROM GATEWAY")
