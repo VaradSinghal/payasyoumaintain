@@ -35,3 +35,14 @@ Before opening a Pull Request that touches any backend service or the gateway:
 - Any new backend route or endpoint intended for client consumption requires:
   1. An explicit routing rule in `gateway/nginx.conf`.
   2. A corresponding test assertion in `scripts/gateway_parity.py` comparing the proxied route against the direct service route.
+
+## 6. Continuous Integration (CI)
+Automated GitHub Actions workflows run on all pull requests and pushes to `main`:
+- **`CI` (`.github/workflows/ci.yml`)**:
+  - Validates JSON contracts and verifies mock fixtures against schemas (`python scripts/validate_fixtures.py`).
+  - Runs unit tests for each Java microservice, Python risk engine, and Flutter client.
+- **`Stack E2E` (`.github/workflows/stack-e2e.yml`)**:
+  - Boots the complete containerized stack using `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait --wait-timeout 300`.
+  - Runs the live end-to-end smoke suite (`python scripts/e2e_smoke.py`) and gateway route parity suite (`python scripts/gateway_parity.py`).
+  - Automatically captures container diagnostic logs (`docker compose logs --no-color --tail=200`) and uploads them as workflow artifacts on failure.
+  - *Note*: The stack E2E workflow exercises the live microservices and gateway; it does not boot mobile device emulators or execute Flutter UI integration tests in CI.
