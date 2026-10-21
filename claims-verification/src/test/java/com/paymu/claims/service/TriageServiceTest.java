@@ -359,6 +359,41 @@ class TriageServiceTest {
     // ── Item 6: Clock & Timezone tests ────────────────────────────────────────
 
     @Test
+    @DisplayName("Fixed Clock: clean service window boundary evaluated at fixed midday clock")
+    void testFixedClockWindowBoundaryAtMidday() {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC);
+        TriageService istTriageService = new TriageService(90, "Asia/Kolkata", fixedClock);
+
+        FnolRequest req = new FnolRequest(
+                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "policy-001",
+                "2026-10-15",
+                "Engine failure",
+                ClaimedCause.MECHANICAL_FAILURE,
+                List.of(),
+                "Bengaluru"
+        );
+
+        // 90 days before 2026-10-15 is 2026-07-17 (inside window -> MANUAL_REVIEW)
+        ServiceTimeline.MaintenanceEvent event90Days = new ServiceTimeline.MaintenanceEvent(
+                "evt-90", "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "2026-07-17",
+                "oil_change", 25000, "oem_api", null);
+        ServiceTimeline tl90 = new ServiceTimeline("a1b2c3d4-e5f6-7890-abcd-ef1234567890", 1, "2026-07-17", 25000, List.of(event90Days));
+        TriageService.TriageResult res90 = istTriageService.triage(req, tl90, noRecall());
+        assertEquals(TriageDecision.MANUAL_REVIEW, res90.decision(),
+                "Service 90 days ago is inside the 90-day clean service window");
+
+        // 91 days before 2026-10-15 is 2026-07-16 (outside window -> STP)
+        ServiceTimeline.MaintenanceEvent event91Days = new ServiceTimeline.MaintenanceEvent(
+                "evt-91", "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "2026-07-16",
+                "oil_change", 25000, "oem_api", null);
+        ServiceTimeline tl91 = new ServiceTimeline("a1b2c3d4-e5f6-7890-abcd-ef1234567890", 1, "2026-07-16", 25000, List.of(event91Days));
+        TriageService.TriageResult res91 = istTriageService.triage(req, tl91, noRecall());
+        assertEquals(TriageDecision.STRAIGHT_THROUGH_PROCESSING, res91.decision(),
+                "Service 91 days ago is outside the 90-day clean service window");
+    }
+
+    @Test
     @DisplayName("Clock rollover: at 20:00 UTC (= 01:30 IST next day), 90-day window evaluates against IST date")
     void testFixedClockAt2000UtcRolloverToIstNextDay() {
         // 2026-10-20 20:00 UTC is 2026-10-21 01:30 IST
