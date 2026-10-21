@@ -3,6 +3,7 @@
 
 Calls every allowlisted route through the gateway for the five demo vehicles
 and a freshly registered vehicle, validating each response against its contract schema.
+Also tests all six FNOL causes and the weather negative case.
 """
 
 import datetime
@@ -66,6 +67,7 @@ def main() -> int:
         "consent-record": json.loads((schemas_dir / "consent-record.schema.json").read_text(encoding="utf-8")),
         "premium-response": json.loads((schemas_dir / "premium-response.schema.json").read_text(encoding="utf-8")),
         "advisory-response": json.loads((schemas_dir / "advisory-response.schema.json").read_text(encoding="utf-8")),
+        "fnol-request": json.loads((schemas_dir / "fnol-request.schema.json").read_text(encoding="utf-8")),
         "fnol-response": json.loads((schemas_dir / "fnol-response.schema.json").read_text(encoding="utf-8")),
         "service-timeline": json.loads((schemas_dir / "service-timeline.schema.json").read_text(encoding="utf-8")),
         "dtc-reading": json.loads((schemas_dir / "dtc-reading.schema.json").read_text(encoding="utf-8")),
@@ -114,11 +116,15 @@ def main() -> int:
     else:
         check_response("GET /pricing/api/v1/vehicle-catalogue", "vehicle-catalogue", catalogue)
 
-    # 2. Fresh Vehicle Registration
+    # 2. Fresh Vehicle Registration (using relative registration date)
     fresh_rc = f"MH01ZZ{int(time.time()) % 10000:04d}"
+    fresh_reg_date = (datetime.date.today() - datetime.timedelta(days=730)).isoformat()
+    recent_incident_date = (datetime.date.today() - datetime.timedelta(days=5)).isoformat()
+    now_timestamp_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     fresh_reg_body = {
         "rc_number": fresh_rc,
-        "registration_date": "2024-03-01",
+        "registration_date": fresh_reg_date,
         "vehicle_segment_id": "hatchback_entry",
         "owner_details": {
             "full_name": "Fresh Test Owner",
@@ -147,13 +153,11 @@ def main() -> int:
         {"id": "d4e5f6a7-b8c9-0123-defa-234567890123", "policy_id": "33c7f064-f8cf-3ee4-af52-1453fd8e713f", "label": "demo_veh_004"},
         {"id": "e5f6a7b8-c9d0-1234-efab-345678901234", "policy_id": "a2aa245d-ecbc-3719-b180-cfc5ca5c3866", "label": "demo_veh_005"},
     ]
-
-    vehicles_to_test = list(demo_vehicles)
     if fresh_vehicle_id and fresh_policy_id:
-        vehicles_to_test.append({"id": fresh_vehicle_id, "policy_id": fresh_policy_id, "label": "fresh_vehicle"})
+        demo_vehicles.append({"id": fresh_vehicle_id, "policy_id": fresh_policy_id, "label": "fresh_vehicle"})
 
-    # 3. Test allowlisted routes for each vehicle
-    for v in vehicles_to_test:
+    # 3. Test all allowlisted routes for each vehicle
+    for v in demo_vehicles:
         vid = v["id"]
         pid = v["policy_id"]
         vlabel = v["label"]
@@ -210,7 +214,7 @@ def main() -> int:
         # POST /maintenance/api/v1/dtc-readings
         dtc_body = {
             "vehicle_id": vid,
-            "timestamp": "2026-10-20T12:00:00Z",
+            "timestamp": now_timestamp_str,
             "confirmed_codes": ["P0101"],
             "pending_codes": [],
             "source": "obd_device",
@@ -254,7 +258,7 @@ def main() -> int:
         fnol_body = {
             "vehicle_id": vid,
             "policy_id": pid,
-            "incident_date": "2026-10-20",
+            "incident_date": recent_incident_date,
             "incident_description": f"Contract check incident for {vlabel}",
             "claimed_cause": "mechanical_failure"
         }
@@ -274,7 +278,58 @@ def main() -> int:
             total_failed += 1
             print(f"[FAIL] POST /claims/api/v1/fnol [{vlabel}]: status {code}")
 
-    # 4. Error response validations (400 and 404)
+    # 4. Item 2: All six causes for a1b2 demo vehicle + weather negative case
+    print("\n--- FNOL Causes Verification (All 6 Causes + Negative Case) ---")
+    all_causes = ["mechanical_failure", "collision", "theft", "natural_disaster", "vandalism", "other"]
+    v1_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    v1_pol = "c4632682-d406-3102-86b7-6a22ef09af5d"
+    for cause in all_causes:
+        cause_req = {
+            "vehicle_id": v1_id,
+            "policy_id": v1_pol,
+            "incident_date": recent_incident_date,
+            "incident_description": f"Testing cause {cause}",
+            "claimed_cause": cause,
+            "photo_refs": []
+        }
+        # Validate request body against fnol-request
+        check_response(f"FNOL request body (cause={cause})", "fnol-request", cause_req)
+
+        code, cause_resp = http_request(f"{gateway_url}/claims/api/v1/fnol", method="POST", body=cause_req)
+        if code == 201:
+            check_response(f"POST /claims/api/v1/fnol (cause={cause})", "fnol-response", cause_resp)
+        else:
+            total_failed += 1
+            print(f"[FAIL] POST /claims/api/v1/fnol (cause={cause}): status {code}, body: {cause_resp}")
+
+    # Negative case: "weather"
+    weather_req = {
+        "vehicle_id": v1_id,
+        "policy_id": v1_pol,
+        "incident_date": recent_incident_date,
+        "incident_description": "Testing cause weather",
+        "claimed_cause": "weather",
+        "photo_refs": []
+    }
+    # Validate request body fails fnol-request
+    weather_val = validators["fnol-request"]
+    weather_errs = list(weather_val.iter_errors(weather_req))
+    if weather_errs:
+        total_passed += 1
+        print("[PASS] Negative check: 'weather' request body correctly FAILS fnol-request schema")
+    else:
+        total_failed += 1
+        print("[FAIL] Negative check: 'weather' request body unexpectedly passed fnol-request schema")
+
+    code_weather, body_weather = http_request(f"{gateway_url}/claims/api/v1/fnol", method="POST", body=weather_req)
+    if code_weather == 400:
+        check_response("POST /claims/api/v1/fnol (cause=weather -> 400 Bad Request)", "error-response", body_weather)
+    else:
+        total_failed += 1
+        print(f"[FAIL] POST /claims/api/v1/fnol (cause=weather): expected 400, got {code_weather}")
+
+    # 5. Error response validations (400 and 404)
+    print("\n--- Error Responses Verification ---")
     code_404, body_404 = http_request(f"{gateway_url}/identity/api/v1/vehicles/00000000-0000-0000-0000-000000000000")
     if code_404 == 404:
         check_response("GET /identity/api/v1/vehicles/00000000... (404 Not Found)", "error-response", body_404)

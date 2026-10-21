@@ -3,6 +3,10 @@
 
 Uses jsonschema Draft202012Validator to validate fixtures under
 mobile_app/test/fixtures/live and mobile_app/test/fixtures/requests.
+
+Acts as a CI gate: exits non-zero on any failing mapped fixture, except
+files listed in scripts/known_stale_fixtures.json. If a listed file passes,
+it also exits non-zero ("remove from the list"), preventing list rot.
 """
 
 import json
@@ -10,12 +14,6 @@ import os
 import sys
 from pathlib import Path
 from jsonschema import Draft202012Validator
-
-
-KNOWN_STALE_FIXTURES = {
-    "claim_get_200.json": "Stale fixture: captured on 2026-10-11 before triage_reason_codes contract token array was added; schema & service are correct, mobile_app/ task needs to recapture.",
-    "fnol_201.json": "Stale fixture: captured on 2026-10-11 before triage_reason_codes contract token array was added; schema & service are correct, mobile_app/ task needs to recapture.",
-}
 
 
 def find_repo_root() -> Path:
@@ -28,10 +26,31 @@ def find_repo_root() -> Path:
     raise RuntimeError("Could not find repository root containing contracts/schemas")
 
 
+def load_known_stale(repo_root: Path) -> dict[str, dict]:
+    stale_file = repo_root / "scripts" / "known_stale_fixtures.json"
+    if not stale_file.is_file():
+        return {}
+    try:
+        entries = json.loads(stale_file.read_text(encoding="utf-8"))
+        result = {}
+        for entry in entries:
+            f = entry.get("file", "")
+            norm = f.replace("\\", "/").strip()
+            result[norm] = entry
+            # Also key by basename for easy matching
+            base = Path(norm).name
+            if base:
+                result[base] = entry
+        return result
+    except Exception as e:
+        print(f"Warning: could not parse {stale_file}: {e}")
+        return {}
+
+
 def main() -> int:
-    strict = "--strict" in sys.argv
     repo_root = find_repo_root()
     schemas_dir = repo_root / "contracts" / "schemas"
+    known_stale = load_known_stale(repo_root)
 
     schemas = {
         "premium-response": json.loads((schemas_dir / "premium-response.schema.json").read_text(encoding="utf-8")),
@@ -58,8 +77,9 @@ def main() -> int:
     total_checked = 0
     total_passed = 0
     total_failed = 0
-    stale_failures = []
-    unexpected_failures = []
+    excused_stale = []
+    unexcused_failures = []
+    stale_that_passed = []
     unmapped_files = []
 
     print("==================================================")
@@ -74,23 +94,24 @@ def main() -> int:
         for fpath in sorted(fdir.glob("*.json")):
             fname = fpath.name
             rel_path = fpath.relative_to(repo_root)
-            is_request = "requests" in str(fpath)
+            norm_rel_path = str(rel_path).replace("\\", "/")
+            is_request = "requests" in norm_rel_path
 
             # Check for empty response (e.g., HTTP 204)
             if fpath.stat().st_size == 0:
-                unmapped_files.append((rel_path, "empty body (HTTP 204)"))
+                unmapped_files.append((norm_rel_path, "empty body (HTTP 204)"))
                 continue
 
             try:
                 data = json.loads(fpath.read_text(encoding="utf-8"))
             except Exception as e:
-                print(f"[FAIL] {rel_path}: JSON decode error: {e}")
+                print(f"[FAIL] {norm_rel_path}: JSON decode error: {e}")
                 total_failed += 1
-                unexpected_failures.append((rel_path, f"JSON decode error: {e}"))
+                unexcused_failures.append((norm_rel_path, f"JSON decode error: {e}"))
                 total_checked += 1
                 continue
 
-            # Complete mapping logic covering every fixture pattern
+            # Mapping logic
             schema_name = None
             is_array = False
 
@@ -129,7 +150,7 @@ def main() -> int:
                     schema_name = "error-response"
 
             if not schema_name:
-                unmapped_files.append((rel_path, "no contract schema defined"))
+                unmapped_files.append((norm_rel_path, "no contract schema defined"))
                 continue
 
             validator = validators[schema_name]
@@ -148,22 +169,27 @@ def main() -> int:
                     err_path = ".".join(str(p) for p in err.path) if err.path else "(root)"
                     errors.append((err_path, err.message))
 
+            is_in_stale_list = (norm_rel_path in known_stale) or (fname in known_stale)
+            stale_entry = known_stale.get(norm_rel_path) or known_stale.get(fname)
+
             if errors:
                 total_failed += 1
-                is_stale = fname in KNOWN_STALE_FIXTURES
-                if is_stale:
-                    stale_reason = KNOWN_STALE_FIXTURES[fname]
-                    stale_failures.append((rel_path, stale_reason, errors))
-                    print(f"[FAIL-STALE] {rel_path} ({schema_name}): {len(errors)} error(s)")
-                    print(f"   Diagnosis: {stale_reason}")
+                if is_in_stale_list:
+                    reason = stale_entry.get("reason", "known stale fixture")
+                    excused_stale.append((norm_rel_path, reason, errors))
+                    print(f"[EXCUSED] {norm_rel_path} ({schema_name}): {reason}")
                 else:
-                    unexpected_failures.append((rel_path, "Schema or service mismatch", errors))
-                    print(f"[FAIL] {rel_path} ({schema_name}): {len(errors)} error(s)")
+                    unexcused_failures.append((norm_rel_path, "Schema or service mismatch", errors))
+                    print(f"[FAIL] {norm_rel_path} ({schema_name}): {len(errors)} error(s)")
                 for err_path, err_msg in errors:
                     print(f"   path: {err_path}: {err_msg}")
             else:
                 total_passed += 1
-                print(f"[PASS] {rel_path} ({schema_name})")
+                if is_in_stale_list:
+                    stale_that_passed.append(norm_rel_path)
+                    print(f"[FAIL-ROT] {norm_rel_path} passed schema validation but is listed in known_stale_fixtures.json — remove from the list!")
+                else:
+                    print(f"[PASS] {norm_rel_path} ({schema_name})")
 
     print("\n--------------------------------------------------")
     print(" Unmapped Fixtures (No Schema / Informational)     ")
@@ -171,20 +197,29 @@ def main() -> int:
     for unmapped_path, reason in unmapped_files:
         print(f" - {unmapped_path} ({reason})")
 
-    if stale_failures:
+    if excused_stale:
         print("\n--------------------------------------------------")
-        print(" Stale Fixture Report (For Mobile Task)           ")
+        print(" Excused Stale Fixtures (scripts/known_stale_fixtures.json)")
         print("--------------------------------------------------")
-        for s_path, s_diag, _ in stale_failures:
-            print(f" - {s_path}: {s_diag}")
+        for s_path, s_reason, _ in excused_stale:
+            print(f" - {s_path}: {s_reason}")
 
     print("\n==================================================")
-    print(f" Summary: {total_passed} passed, {total_failed} failed ({len(stale_failures)} stale, {len(unexpected_failures)} unexpected), {len(unmapped_files)} unmapped")
+    print(f" Summary: {total_passed} passed, {total_failed} failed ({len(excused_stale)} excused stale, {len(unexcused_failures)} unexcused failures, {len(stale_that_passed)} rotted entries), {len(unmapped_files)} unmapped")
     print("==================================================")
 
-    if strict:
-        return 1 if total_failed > 0 else 0
-    return 1 if len(unexpected_failures) > 0 else 0
+    if stale_that_passed:
+        print("\n[ERROR] One or more fixtures listed in scripts/known_stale_fixtures.json now PASS.")
+        print("Remove them from scripts/known_stale_fixtures.json to keep the list clean:")
+        for r_file in stale_that_passed:
+            print(f"  - {r_file}")
+        return 1
+
+    if unexcused_failures:
+        print(f"\n[ERROR] {len(unexcused_failures)} fixture(s) failed contract validation unexpectedly.")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
