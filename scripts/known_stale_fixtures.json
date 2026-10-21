@@ -1,12 +1,1 @@
-[
-  {
-    "file": "mobile_app/test/fixtures/live/claim_get_200.json",
-    "reason": "captured before triage_reason_codes; recapture after PR #12 merges",
-    "since": "2026-10-20"
-  },
-  {
-    "file": "mobile_app/test/fixtures/live/fnol_201.json",
-    "reason": "captured before triage_reason_codes; recapture after PR #12 merges",
-    "since": "2026-10-20"
-  }
-]
+[]
