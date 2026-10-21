@@ -48,6 +48,12 @@ jobs:
           pip install jsonschema
           python scripts/contract_check.py --check-status-table docs/VERIFIED_STATUS_CODES.md
 
+      - name: Run Demo preflight
+        run: python scripts/demo_preflight.py
+
+      - name: Run Demo reset
+        run: python scripts/demo_reset.py
+
       - name: Print container diagnostics on failure
         if: failure()
         run: |
