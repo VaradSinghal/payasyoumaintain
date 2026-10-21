@@ -15,6 +15,9 @@ class MockPricingApi extends PricingPolicyApi {
   QuoteResponse response;
   String? lastVehicleIdRequested;
   int quoteCallCount = 0;
+  List<VehicleSegment> catalogue = [
+    VehicleSegment(id: 'sedan_mid', label: 'Mid-size sedan', exShowroomPriceInr: 1200000),
+  ];
 
   MockPricingApi(this.response);
 
@@ -23,6 +26,11 @@ class MockPricingApi extends PricingPolicyApi {
     quoteCallCount++;
     lastVehicleIdRequested = vehicleId;
     return response;
+  }
+
+  @override
+  Future<List<VehicleSegment>> getVehicleCatalogue() async {
+    return catalogue;
   }
 }
 
@@ -464,11 +472,13 @@ void main() {
   group('Honest Consent Copy and Registration Speed', () {
     testWidgets('Displays honest consent copy on data sharing preferences view', (tester) async {
       final identityApi = MockIdentityConsentApi();
+      final pricingApi = MockPricingApi(loadQuoteFixture('quote_a1b2_opted_out.json'));
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             identityApiProvider.overrideWithValue(identityApi),
+            pricingApiProvider.overrideWithValue(pricingApi),
           ],
           child: const MaterialApp(home: OnboardingScreen()),
         ),
@@ -477,6 +487,9 @@ void main() {
 
       // Go to registration form
       await tester.tap(find.text('Register my vehicle'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Fill demo details'));
       await tester.pumpAndSettle();
 
       // Scroll and tap Register Vehicle
@@ -495,11 +508,14 @@ void main() {
 
     testWidgets('"Fill demo details" pre-fills fictional data into form', (tester) async {
       final identityApi = MockIdentityConsentApi();
+      final pricingApi = MockPricingApi(loadQuoteFixture('quote_a1b2_opted_out.json'));
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             identityApiProvider.overrideWithValue(identityApi),
+            pricingApiProvider.overrideWithValue(pricingApi),
+            clockProvider.overrideWithValue(() => DateTime(2026, 1, 15)),
           ],
           child: const MaterialApp(home: OnboardingScreen()),
         ),
@@ -518,7 +534,8 @@ void main() {
       expect(find.text('Demo Driver (Fictional)'), findsOneWidget);
       expect(find.text('DL01DEMO9999'), findsOneWidget);
       expect(find.text('2024-01-15'), findsOneWidget);
-      expect(find.text('demo.driver@example.test'), findsOneWidget);
+      expect(find.text('Mid-size sedan (indicative ex-showroom ₹12,00,000)'), findsOneWidget);
+      expect(find.text('demo.driver@example.com'), findsOneWidget);
       expect(find.text('9999999999'), findsOneWidget);
       expect(find.text('ABCDE9999Z'), findsOneWidget);
     });

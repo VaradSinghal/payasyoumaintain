@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../utils/currency_formatter.dart';
+import '../widgets/pricing_basis_widget.dart';
 import '../widgets/shared_widgets.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -230,6 +231,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
+                PricingBasisSection(pricingBasis: quote.pricingBasis),
               ],
             ),
           ),

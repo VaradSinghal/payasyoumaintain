@@ -5,12 +5,15 @@ import '../models/models.dart';
 import '../providers/api_providers.dart';
 import '../providers/auth_provider.dart';
 import '../utils/currency_formatter.dart';
+import '../widgets/pricing_basis_widget.dart';
 import '../widgets/shared_widgets.dart';
 
 enum OnboardingView { welcome, registerForm, consent, quote }
 
 class OnboardingScreen extends ConsumerStatefulWidget {
-  const OnboardingScreen({super.key});
+  final DateTime Function()? clock;
+
+  const OnboardingScreen({super.key, this.clock});
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -37,16 +40,51 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   List<DemoScenario> _scenarios = DemoScenario.fallbackScenarios;
 
+  List<VehicleSegment>? _catalogue;
+  bool _isLoadingCatalogue = false;
+  String? _catalogueError;
+  String? _selectedSegmentId;
+  DateTime? _registrationDate;
+
   @override
   void initState() {
     super.initState();
     _loadScenarios();
+    _loadCatalogue();
+  }
+
+  DateTime _getNow() {
+    if (widget.clock != null) return widget.clock!();
+    return ref.read(clockProvider)();
   }
 
   Future<void> _loadScenarios() async {
     final list = await DemoScenario.loadScenarios();
     if (mounted) {
       setState(() => _scenarios = list);
+    }
+  }
+
+  Future<void> _loadCatalogue() async {
+    setState(() {
+      _isLoadingCatalogue = true;
+      _catalogueError = null;
+    });
+    try {
+      final list = await ref.read(pricingApiProvider).getVehicleCatalogue();
+      if (mounted) {
+        setState(() {
+          _catalogue = list;
+          _isLoadingCatalogue = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _catalogueError = e.toString();
+          _isLoadingCatalogue = false;
+        });
+      }
     }
   }
 
@@ -62,14 +100,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _fillDemoDetails() {
+    final now = _getNow();
+    final twoYearsAgo = DateTime(now.year - 2, now.month, now.day);
+    final dateStr =
+        '${twoYearsAgo.year.toString().padLeft(4, '0')}-${twoYearsAgo.month.toString().padLeft(2, '0')}-${twoYearsAgo.day.toString().padLeft(2, '0')}';
     setState(() {
       _nameController.text = 'Demo Driver (Fictional)';
       _rcController.text = 'DL01DEMO9999';
-      _regDateController.text = '2024-01-15';
-      _emailController.text = 'demo.driver@example.test';
+      _regDateController.text = dateStr;
+      _registrationDate = twoYearsAgo;
+      _selectedSegmentId = 'sedan_mid';
+      _emailController.text = 'demo.driver@example.com';
       _phoneController.text = '9999999999';
       _panController.text = 'ABCDE9999Z';
     });
+  }
+
+  Future<void> _showRegistrationDatePicker() async {
+    final now = _getNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final firstAllowedDate = DateTime(now.year - 25, now.month, now.day);
+    DateTime initial = _registrationDate ?? today;
+    if (initial.isAfter(today)) initial = today;
+    if (initial.isBefore(firstAllowedDate)) initial = today;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: firstAllowedDate,
+      lastDate: today,
+    );
+    if (picked != null) {
+      setState(() {
+        _registrationDate = picked;
+        _regDateController.text =
+            '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+      });
+    }
   }
 
   Future<void> _selectDemoVehicle(DemoScenario scenario) async {
@@ -96,6 +163,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _error = null;
     });
     try {
+      if (_selectedSegmentId == null || _selectedSegmentId!.isEmpty) {
+        setState(() {
+          _error = 'Please select a vehicle type';
+          _isLoading = false;
+        });
+        return;
+      }
+
       final name = _nameController.text.trim().isNotEmpty
           ? _nameController.text.trim()
           : 'PayAsUMaintain User';
@@ -118,6 +193,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       final reg = await ref.read(identityApiProvider).registerVehicle({
         'rc_number': rc,
         'registration_date': date,
+        'vehicle_segment_id': _selectedSegmentId,
         'owner_details': {
           'full_name': name,
           'kyc_document_number': pan,
@@ -227,7 +303,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           height: 48,
           child: ElevatedButton.icon(
             icon: const Icon(Icons.app_registration),
-            onPressed: () => setState(() => _currentView = OnboardingView.registerForm),
+            onPressed: () {
+              if (_catalogue == null && !_isLoadingCatalogue) {
+                _loadCatalogue();
+              }
+              setState(() => _currentView = OnboardingView.registerForm);
+            },
             label: const Text('Register my vehicle', style: TextStyle(fontSize: 16)),
           ),
         ),
@@ -332,12 +413,105 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
+  Widget _buildVehicleTypePicker() {
+    if (_isLoadingCatalogue) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 14.0),
+        alignment: Alignment.center,
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Loading vehicle catalogue...'),
+          ],
+        ),
+      );
+    }
+
+    if (_catalogueError != null) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6.0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Could not load vehicle catalogue.',
+                style: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: _loadCatalogue,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_catalogue != null && _catalogue!.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6.0),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Expanded(child: Text('No vehicle types available')),
+            ElevatedButton(
+              onPressed: _loadCatalogue,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final items = _catalogue ?? [];
+
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: 'Vehicle type *',
+        border: const OutlineInputBorder(),
+        errorText: _selectedSegmentId == null && _error == 'Please select a vehicle type'
+            ? 'Please select a vehicle type'
+            : null,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          key: const Key('vehicle_type_dropdown'),
+          isExpanded: true,
+          value: _selectedSegmentId,
+          hint: const Text('Select vehicle type'),
+          items: items.map((segment) {
+            final priceStr = CurrencyFormatter.formatWhole(segment.exShowroomPriceInr);
+            return DropdownMenuItem<String>(
+              value: segment.id,
+              child: Text('${segment.label} (indicative ex-showroom $priceStr)'),
+            );
+          }).toList(),
+          onChanged: (val) => setState(() => _selectedSegmentId = val),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRegisterForm() {
     const bool showDemoTools = !kReleaseMode ||
         bool.fromEnvironment('DEMO_TOOLS', defaultValue: false);
 
-    return ListView(
-      children: [
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -372,13 +546,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        _buildVehicleTypePicker(),
+        const SizedBox(height: 12),
         TextField(
           controller: _regDateController,
-          decoration: const InputDecoration(
+          readOnly: false,
+          decoration: InputDecoration(
             labelText: 'Registration Date',
             hintText: 'YYYY-MM-DD',
-            border: OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.calendar_today),
+              onPressed: _showRegistrationDatePicker,
+            ),
+            border: const OutlineInputBorder(),
           ),
+          onTap: _showRegistrationDatePicker,
         ),
         const SizedBox(height: 12),
         TextField(
@@ -421,8 +603,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildConsent() {
     return Column(
@@ -474,17 +657,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         : '₹0.00';
     final isTrackingOff = !_usageTracking && !_maintenanceTracking;
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return ListView(
       children: [
         const Text(
           'Your Baseline Quote',
+          textAlign: TextAlign.center,
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
         if (_quote != null) ...[
           Text(
             '$formattedPremium / month',
+            textAlign: TextAlign.center,
             style: const TextStyle(
                 fontSize: 40, fontWeight: FontWeight.bold, color: Colors.green),
           ),
@@ -530,8 +714,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w500),
             ),
           ],
+          if (_quote?.pricingBasis != null)
+            PricingBasisSection(
+              pricingBasis: _quote!.pricingBasis,
+              catalogue: _catalogue,
+            ),
         ],
-        const Spacer(),
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
           height: 48,

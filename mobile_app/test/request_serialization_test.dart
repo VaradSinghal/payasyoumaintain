@@ -14,23 +14,27 @@ void main() {
     });
 
     test('Serializes registration request and writes fixture', () {
-      final regData = {
-        'rc_number': 'MH12AB1234',
-        'registration_date': '2024-01-15',
-        'owner_details': {
-          'full_name': 'PayAsUMaintain User',
-          'kyc_document_number': 'ABCDE1234F',
-          'kyc_document_type': 'PAN',
-          'email': 'user@payasumaintain.com',
-          'phone_number': '9876543210',
-        },
-      };
+      final regReq = RegistrationRequest(
+        rcNumber: 'MH12AB1234',
+        registrationDate: '2024-01-15',
+        vehicleSegmentId: 'sedan_mid',
+        ownerDetails: OwnerDetails(
+          fullName: 'PayAsUMaintain User',
+          kycDocumentNumber: 'ABCDE1234F',
+          kycDocumentType: 'PAN',
+          email: 'user@payasumaintain.com',
+          phoneNumber: '9876543210',
+        ),
+      );
 
+      final json = regReq.toJson();
       File('${requestsDir.path}/registration_request.json')
-          .writeAsStringSync(const JsonEncoder.withIndent('  ').convert(regData));
+          .writeAsStringSync(const JsonEncoder.withIndent('  ').convert(json));
 
-      expect(regData['rc_number'], 'MH12AB1234');
-      expect(regData['owner_details'], isNotNull);
+      expect(json['rc_number'], 'MH12AB1234');
+      expect(json['vehicle_segment_id'], 'sedan_mid');
+      expect(json['owner_details'], isNotNull);
+      expect((json['owner_details'] as Map<String, dynamic>)['full_name'], 'PayAsUMaintain User');
     });
 
     test('Serializes consent update request and writes fixture', () {

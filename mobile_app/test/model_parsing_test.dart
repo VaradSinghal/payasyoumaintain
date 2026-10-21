@@ -133,8 +133,8 @@ void main() {
       expect(detailFresh!.usageScore, isNull);
       expect(detailFresh.maintenanceScore, isNull);
       expect(detailFresh.compositeScore, isNull);
-      expect(detailFresh.healthStatus, 'insufficient_data');
-      expect(detailFresh.dataFlags, contains('usage_data_unavailable'));
+      expect(detailFresh.healthStatus, 'not_evaluated');
+      expect(detailFresh.dataFlags, contains('vehicle_not_registered'));
       expect(detailFresh.renewalRecommendation, isNotNull);
       expect(detailFresh.renewalRecommendation!.trim(), isNotEmpty);
     });
@@ -284,6 +284,71 @@ void main() {
       final putIn = ConsentRecord.fromJson(loadJson('consent_put_opted_in_200.json'));
       expect(putIn.usageTrackingOptIn, isTrue);
       expect(putIn.maintenanceTrackingOptIn, isTrue);
+    });
+
+    test('Vehicle catalogue fixture parses all 6 segments', () {
+      final file = File('${liveDir.path}/vehicle_catalogue_200.json');
+      final list = jsonDecode(file.readAsStringSync()) as List<dynamic>;
+      final catalogue = list.map((e) => VehicleSegment.fromJson(e as Map<String, dynamic>)).toList();
+      expect(catalogue, hasLength(6));
+      expect(catalogue.any((s) => s.id == 'sedan_mid' && s.label == 'Mid-size sedan' && s.exShowroomPriceInr == 1200000), isTrue);
+      expect(catalogue.any((s) => s.id == 'hatchback_compact' && s.label == 'Compact hatchback' && s.exShowroomPriceInr == 800000), isTrue);
+      expect(catalogue.any((s) => s.id == 'sedan_entry' && s.label == 'Entry sedan' && s.exShowroomPriceInr == 900000), isTrue);
+      expect(catalogue.any((s) => s.id == 'suv_compact' && s.label == 'Compact SUV' && s.exShowroomPriceInr == 1000000), isTrue);
+      expect(catalogue.any((s) => s.id == 'suv_premium' && s.label == 'Premium SUV' && s.exShowroomPriceInr == 1500000), isTrue);
+      expect(catalogue.any((s) => s.id == 'suv_luxury' && s.label == 'Luxury SUV' && s.exShowroomPriceInr == 1800000), isTrue);
+    });
+
+    test('Pricing basis parsing with value assertions across sources', () {
+      // 1. a1b2: demo_profile, sedan_mid, age 2, idv 960000.0, ncb 20.0
+      final qA1b2 = QuoteResponse.fromJson(loadJson('quote_demo_veh_001.json'));
+      expect(qA1b2.pricingBasis, isNotNull);
+      expect(qA1b2.pricingBasis?.source, 'demo_profile');
+      expect(qA1b2.pricingBasis?.vehicleSegmentId, 'sedan_mid');
+      expect(qA1b2.pricingBasis?.vehicleAgeYears, 2);
+      expect(qA1b2.pricingBasis?.idv, 960000.0);
+      expect(qA1b2.pricingBasis?.ncbPct, 20.0);
+
+      // 2. New registration (sedan_mid, age 2): registered, sedan_mid, age 2, base_premium 24960.0
+      final qSedanOff = QuoteResponse.fromJson(loadJson('quote_sedan_mid_opted_out.json'));
+      expect(qSedanOff.basePremium, 24960.0);
+      expect(qSedanOff.pricingBasis, isNotNull);
+      expect(qSedanOff.pricingBasis?.source, 'registered');
+      expect(qSedanOff.pricingBasis?.vehicleSegmentId, 'sedan_mid');
+      expect(qSedanOff.pricingBasis?.vehicleAgeYears, 2);
+      expect(qSedanOff.pricingBasis?.idv, 960000.0);
+      expect(qSedanOff.pricingBasis?.ncbPct, 0.0);
+
+      final qSedanIn = QuoteResponse.fromJson(loadJson('quote_sedan_mid_opted_in.json'));
+      expect(qSedanIn.basePremium, 24960.0);
+      expect(qSedanIn.pricingBasis?.source, 'registered');
+      expect(qSedanIn.pricingBasis?.vehicleSegmentId, 'sedan_mid');
+      expect(qSedanIn.pricingBasis?.vehicleAgeYears, 2);
+
+      // 3. No-segment registration: generic_default, base_premium 13650.0
+      final qNoSeg = QuoteResponse.fromJson(loadJson('quote_no_segment_generic_default.json'));
+      expect(qNoSeg.basePremium, 13650.0);
+      expect(qNoSeg.pricingBasis, isNotNull);
+      expect(qNoSeg.pricingBasis?.source, 'generic_default');
+      expect(qNoSeg.pricingBasis?.vehicleSegmentId, isNull);
+      expect(qNoSeg.pricingBasis?.vehicleAgeYears, 3);
+      expect(qNoSeg.pricingBasis?.idv, 525000.0);
+
+      // 4. Registration response fixture parses vehicleSegmentId
+      final regSedan = VehicleRegistration.fromJson(loadJson('registration_sedan_mid_201.json'));
+      expect(regSedan.vehicleSegmentId, 'sedan_mid');
+      expect(regSedan.vehicleId, isNotNull);
+
+      final regNoSeg = VehicleRegistration.fromJson(loadJson('registration_no_segment_201.json'));
+      expect(regNoSeg.vehicleSegmentId, isNull);
+
+      // 5. Quote without pricing_basis must still parse cleanly
+      final rawQuote = loadJson('quote_no_segment_generic_default.json');
+      rawQuote.remove('pricing_basis');
+      final qNoBasis = QuoteResponse.fromJson(rawQuote);
+      expect(qNoBasis.pricingBasis, isNull);
+      expect(qNoBasis.finalPremium, 13650.0);
+      expect(qNoBasis.basePremium, 13650.0);
     });
   });
 }

@@ -1,6 +1,7 @@
 {
   "rc_number": "MH12AB1234",
   "registration_date": "2024-01-15",
+  "vehicle_segment_id": "sedan_mid",
   "owner_details": {
     "full_name": "PayAsUMaintain User",
     "kyc_document_number": "ABCDE1234F",

@@ -10,6 +10,7 @@ class PremiumResponse {
   final String computedAt;
   final String methodologyNote;
   final ScoreDetail? scoreDetail;
+  final dynamic pricingBasis;
 
   PremiumResponse({
     required this.requestId,
@@ -23,6 +24,7 @@ class PremiumResponse {
     required this.computedAt,
     required this.methodologyNote,
     this.scoreDetail,
+    this.pricingBasis,
   });
 
   factory PremiumResponse.mock() {

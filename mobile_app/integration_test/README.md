@@ -10,7 +10,7 @@ The test executes scenarios `a` through `h`:
 - **Scenario c**: Privacy & tracking toggles restored to ON -> verifies ₹13,977.60 restored and score bars return.
 - **Scenario d**: "Why this score?" screen -> verifies service history records render with humanized OEM badge ("OEM" instead of "oem_api") and trips are listed.
 - **Scenario e**: Vehicle switcher -> selects "The Overdue Hatchback", verifying open safety recall banner and ₹12,265.34 premium.
-- **Scenario f**: Vehicle onboarding registration with fictional demo details -> consent toggles default to OFF, shows baseline quote ₹13,650.00 with tracking-off card; turning toggles ON removes the card.
+- **Scenario f**: Vehicle onboarding registration with fictional demo details (sedan_mid, 2 years ago) -> consent toggles default to OFF, shows baseline quote ₹24,960.00, tracking-off card, and "How we priced your vehicle" naming "Mid-size sedan" and "Your registered vehicle"; turning toggles ON removes the card while pricing section still names "Mid-size sedan".
 - **Scenario g**: Switch to "The Overdue Hatchback", file `mechanical_failure` claim -> transitions to claim status displaying `Requires Manual Review` triage outcome, `open_recall_on_file` triage reason, and claim ID.
 - **Scenario h**: Diagnostics manual reading with confirmed code `P0301`, navigate away and back to confirm code persists; submit manual reading with check engine light off (no codes), confirming screen returns to "checked, no faults".
 

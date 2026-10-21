@@ -216,7 +216,7 @@ void main() {
     }
 
     // ----------------------------------------------------------------------
-    // Scenario f: Register new vehicle with demo details, toggles OFF -> ₹13,650.00
+    // Scenario f: Register new vehicle with demo details, toggles OFF -> ₹24,960.00
     //             Then toggles ON -> tracking-off card disappears
     // ----------------------------------------------------------------------
     debugPrint('[SCENARIO F] Register new vehicle through onboarding');
@@ -255,10 +255,15 @@ void main() {
 
       // Baseline screen checks
       expect(find.text('Your Baseline Quote'), findsOneWidget);
-      expect(find.textContaining('₹13,650.00'), findsOneWidget);
+      expect(find.textContaining('₹24,960.00'), findsOneWidget);
       expect(find.byKey(const Key('tracking_off_card')), findsOneWidget);
+      expect(find.text('How we priced your vehicle'), findsOneWidget);
+      expect(find.textContaining('Mid-size sedan'), findsOneWidget);
+      expect(find.textContaining('Your registered vehicle'), findsOneWidget);
 
       // Go to Dashboard
+      final quoteScroll = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Go to Dashboard'), 50.0, scrollable: quoteScroll);
       await tester.tap(find.text('Go to Dashboard'));
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
@@ -290,7 +295,20 @@ void main() {
 
       // Verify tracking-off card is NO LONGER shown
       expect(find.byKey(const Key('tracking_off_card')), findsNothing);
-      debugPrint('[SCENARIO F] PASS: Baseline ₹13,650.00 with tracking-off card, disappeared after turning toggles ON');
+
+      // Verify the pricing section still names "Mid-size sedan"
+      final currentDashScrollable = find.byType(Scrollable).first;
+      await tester.drag(currentDashScrollable, const Offset(0, 400));
+      await tester.pumpAndSettle();
+      final explainFinder = find.text('Explain my premium');
+      if (explainFinder.evaluate().isNotEmpty) {
+        await tester.scrollUntilVisible(explainFinder, 50.0, scrollable: currentDashScrollable);
+        await tester.pumpAndSettle();
+        await tester.tap(explainFinder, warnIfMissed: false);
+        await tester.pumpAndSettle(const Duration(seconds: 2));
+      }
+      expect(find.textContaining('Mid-size sedan'), findsWidgets);
+      debugPrint('[SCENARIO F] PASS: Baseline ₹24,960.00 with How we priced your vehicle and Mid-size sedan, tracking-off card gone after toggles ON');
     } catch (e) {
       debugPrint('[SCENARIO F] FAIL: $e');
       dumpScreenText();

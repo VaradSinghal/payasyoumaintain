@@ -146,6 +146,8 @@ def main() -> int:
                     schema_name = "vehicle-registration-response"
                 elif fname.startswith("fnol_201") or fname == "claim_get_200.json":
                     schema_name = "fnol-response"
+                elif fname.startswith("vehicle_catalogue_"):
+                    schema_name = "vehicle-catalogue"
                 elif any(err in fname for err in ["_400", "_404", "_422", "_500"]) or "error" in fname:
                     schema_name = "error-response"
 

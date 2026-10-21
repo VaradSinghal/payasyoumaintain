@@ -1,4 +1,142 @@
 export 'demo_scenario.dart';
+
+class VehicleSegment {
+  final String id;
+  final String label;
+  final int exShowroomPriceInr;
+
+  VehicleSegment({
+    required this.id,
+    required this.label,
+    required this.exShowroomPriceInr,
+  });
+
+  factory VehicleSegment.fromJson(Map<String, dynamic> json) {
+    return VehicleSegment(
+      id: json['id'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      exShowroomPriceInr: (json['ex_showroom_price_inr'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'ex_showroom_price_inr': exShowroomPriceInr,
+  };
+}
+
+class PricingBasis {
+  final String? source;
+  final String? vehicleSegmentId;
+  final int? exShowroomPriceInr;
+  final int? vehicleAgeYears;
+  final double? depreciationFactor;
+  final double? idv;
+  final double? ncbPct;
+
+  PricingBasis({
+    this.source,
+    this.vehicleSegmentId,
+    this.exShowroomPriceInr,
+    this.vehicleAgeYears,
+    this.depreciationFactor,
+    this.idv,
+    this.ncbPct,
+  });
+
+  factory PricingBasis.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return PricingBasis();
+    return PricingBasis(
+      source: json['source'] as String?,
+      vehicleSegmentId: json['vehicle_segment_id'] as String?,
+      exShowroomPriceInr: (json['ex_showroom_price_inr'] as num?)?.toInt(),
+      vehicleAgeYears: (json['vehicle_age_years'] as num?)?.toInt(),
+      depreciationFactor: (json['depreciation_factor'] as num?)?.toDouble(),
+      idv: (json['idv'] as num?)?.toDouble(),
+      ncbPct: (json['ncb_pct'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    if (source != null) 'source': source,
+    if (vehicleSegmentId != null) 'vehicle_segment_id': vehicleSegmentId,
+    if (exShowroomPriceInr != null) 'ex_showroom_price_inr': exShowroomPriceInr,
+    if (vehicleAgeYears != null) 'vehicle_age_years': vehicleAgeYears,
+    if (depreciationFactor != null) 'depreciation_factor': depreciationFactor,
+    if (idv != null) 'idv': idv,
+    if (ncbPct != null) 'ncb_pct': ncbPct,
+  };
+}
+
+class OwnerDetails {
+  final String fullName;
+  final String kycDocumentNumber;
+  final String? kycDocumentType;
+  final String email;
+  final String phoneNumber;
+
+  OwnerDetails({
+    required this.fullName,
+    required this.kycDocumentNumber,
+    this.kycDocumentType = 'PAN',
+    required this.email,
+    required this.phoneNumber,
+  });
+
+  factory OwnerDetails.fromJson(Map<String, dynamic> json) {
+    return OwnerDetails(
+      fullName: json['full_name'] as String? ?? '',
+      kycDocumentNumber: json['kyc_document_number'] as String? ?? '',
+      kycDocumentType: json['kyc_document_type'] as String?,
+      email: json['email'] as String? ?? '',
+      phoneNumber: json['phone_number'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'full_name': fullName,
+      'kyc_document_number': kycDocumentNumber,
+      if (kycDocumentType != null) 'kyc_document_type': kycDocumentType,
+      'email': email,
+      'phone_number': phoneNumber,
+    };
+  }
+}
+
+class RegistrationRequest {
+  final String rcNumber;
+  final String registrationDate;
+  final String? vehicleSegmentId;
+  final OwnerDetails ownerDetails;
+
+  RegistrationRequest({
+    required this.rcNumber,
+    required this.registrationDate,
+    this.vehicleSegmentId,
+    required this.ownerDetails,
+  });
+
+  factory RegistrationRequest.fromJson(Map<String, dynamic> json) {
+    return RegistrationRequest(
+      rcNumber: json['rc_number'] as String? ?? '',
+      registrationDate: json['registration_date'] as String? ?? '',
+      vehicleSegmentId: json['vehicle_segment_id'] as String?,
+      ownerDetails: OwnerDetails.fromJson(json['owner_details'] as Map<String, dynamic>? ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'rc_number': rcNumber,
+      'registration_date': registrationDate,
+      if (vehicleSegmentId != null) 'vehicle_segment_id': vehicleSegmentId,
+      'owner_details': ownerDetails.toJson(),
+    };
+  }
+}
+
 class VehicleRegistration {
   final String? vehicleId;
   final String? policyId;
@@ -6,6 +144,7 @@ class VehicleRegistration {
   final String? registrationDate;
   final String? kycStatus;
   final String? registeredAt;
+  final String? vehicleSegmentId;
 
   VehicleRegistration({
     this.vehicleId,
@@ -14,6 +153,7 @@ class VehicleRegistration {
     this.registrationDate,
     this.kycStatus,
     this.registeredAt,
+    this.vehicleSegmentId,
   });
 
   factory VehicleRegistration.fromJson(Map<String, dynamic> json) {
@@ -24,6 +164,7 @@ class VehicleRegistration {
       registrationDate: json['registration_date'] as String?,
       kycStatus: json['kyc_status'] as String?,
       registeredAt: json['registered_at'] as String?,
+      vehicleSegmentId: json['vehicle_segment_id'] as String?,
     );
   }
 }
@@ -148,6 +289,7 @@ class QuoteResponse {
   final double? basePremium;
   final String? validUntil;
   final String? computedAt;
+  final PricingBasis? pricingBasis;
 
   QuoteResponse({
     required this.finalPremium,
@@ -162,6 +304,7 @@ class QuoteResponse {
     this.basePremium,
     this.validUntil,
     this.computedAt,
+    this.pricingBasis,
   });
 
   factory QuoteResponse.fromJson(Map<String, dynamic> json) {
@@ -183,6 +326,9 @@ class QuoteResponse {
       basePremium: (json['base_premium'] as num?)?.toDouble(),
       validUntil: json['valid_until'] as String?,
       computedAt: json['computed_at'] as String?,
+      pricingBasis: json['pricing_basis'] != null
+          ? PricingBasis.fromJson(json['pricing_basis'] as Map<String, dynamic>)
+          : null,
     );
   }
 }
