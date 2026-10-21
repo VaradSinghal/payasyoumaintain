@@ -43,6 +43,11 @@ jobs:
       - name: Run Gateway parity tests
         run: python scripts/gateway_parity.py
 
+      - name: Run Contract checks
+        run: |
+          pip install jsonschema
+          python scripts/contract_check.py
+
       - name: Print container diagnostics on failure
         if: failure()
         run: |
