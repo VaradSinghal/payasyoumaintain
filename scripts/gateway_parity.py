@@ -164,12 +164,17 @@ def compare_key_structure(val1, val2, path="root"):
         return True, ""
     return True, ""
 
-def check_parity(route_name, direct_url, gateway_url, method="GET", data=None):
+def check_parity(route_name, direct_url, gateway_url, method="GET", data=None, expected_status=None):
     print(f"Checking {route_name}...")
     st_dir, mt_dir, json_dir, raw_dir, _ = make_request(direct_url, method=method, data=data)
     st_gw, mt_gw, json_gw, raw_gw, _ = make_request(gateway_url, method=method, data=data)
 
     mismatches = []
+    if expected_status is not None:
+        if st_dir != expected_status:
+            mismatches.append(f"Expected direct status {expected_status}, got {st_dir}")
+        if st_gw != expected_status:
+            mismatches.append(f"Expected gateway status {expected_status}, got {st_gw}")
     if st_dir != st_gw:
         mismatches.append(f"HTTP Status mismatch: direct={st_dir}, gateway={st_gw}")
     if mt_dir != mt_gw:
@@ -301,7 +306,7 @@ def run_parity_suite():
     b2c3_id = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
     fnol_payload = {
         "vehicle_id": b2c3_id,
-        "policy_id": "c4632682-d406-3102-86b7-6a22ef09af5d",
+        "policy_id": "4c4caec8-846d-31d6-af88-43c25c038aa4",
         "incident_date": "2026-03-01T10:00:00Z",
         "claimed_cause": "mechanical_failure",
         "incident_description": "Engine stalled suddenly on expressway",
@@ -314,6 +319,7 @@ def run_parity_suite():
         f"{GATEWAY_URL}/claims/api/v1/fnol",
         method="POST",
         data=fnol_payload,
+        expected_status=201,
     )
     claim_id = fnol_json.get("claim_id") if (ok_fnol and isinstance(fnol_json, dict)) else None
 
