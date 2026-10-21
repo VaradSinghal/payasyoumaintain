@@ -110,6 +110,8 @@ def main() -> int:
         "fnol-request": json.loads((schemas_dir / "fnol-request.schema.json").read_text(encoding="utf-8")),
         "fnol-response": json.loads((schemas_dir / "fnol-response.schema.json").read_text(encoding="utf-8")),
         "service-timeline": json.loads((schemas_dir / "service-timeline.schema.json").read_text(encoding="utf-8")),
+        "service-record-request": json.loads((schemas_dir / "service-record-request.schema.json").read_text(encoding="utf-8")),
+        "service-record-response": json.loads((schemas_dir / "service-record-response.schema.json").read_text(encoding="utf-8")),
         "dtc-reading": json.loads((schemas_dir / "dtc-reading.schema.json").read_text(encoding="utf-8")),
         "trip-aggregate": json.loads((schemas_dir / "trip-aggregate.schema.json").read_text(encoding="utf-8")),
         "error-response": json.loads((schemas_dir / "error-response.schema.json").read_text(encoding="utf-8")),
@@ -482,8 +484,170 @@ def main() -> int:
     if code_400 == 400:
         check_response("GET /advisory/api/v1/advisories/not-a-valid-uuid (400 Bad Request)", "error-response", body_400)
 
+    # 5b. Self-Reported Service Records Verification (Accepted 201, Flagged 201, Rejected 200, 403, 404, 400)
+    print("\n--- Self-Reported Service Records Contract Verification ---")
+
+    # 404: Unknown vehicle ID
+    code_sr_404, body_sr_404, _ = call_and_record(
+        "/maintenance/api/v1/service-records",
+        f"{gateway_url}/maintenance/api/v1/service-records",
+        method="POST",
+        body={
+            "vehicle_id": str(uuid.uuid4()),
+            "service_date": (datetime.date.today() - datetime.timedelta(days=10)).isoformat(),
+            "service_type": "oil_change",
+            "odometer_km": 15000,
+        },
+        expected_status=404,
+        label="POST /maintenance/api/v1/service-records (unknown vehicle -> 404 Not Found)",
+    )
+    if code_sr_404 == 404:
+        check_response("POST /maintenance/api/v1/service-records (unknown vehicle)", "error-response", body_sr_404)
+
+    # 400: Missing required field (odometer_km)
+    code_sr_400, body_sr_400, _ = call_and_record(
+        "/maintenance/api/v1/service-records",
+        f"{gateway_url}/maintenance/api/v1/service-records",
+        method="POST",
+        body={
+            "vehicle_id": v1_id,
+            "service_date": (datetime.date.today() - datetime.timedelta(days=10)).isoformat(),
+            "service_type": "oil_change",
+        },
+        expected_status=400,
+        label="POST /maintenance/api/v1/service-records (missing odometer_km -> 400 Bad Request)",
+    )
+    if code_sr_400 == 400:
+        check_response("POST /maintenance/api/v1/service-records (missing odometer_km)", "error-response", body_sr_400)
+
+    # 403: Vehicle with consent disabled
+    no_consent_rc = f"NOCON{int(time.time() * 1000) % 100000:05d}"
+    code_nc, resp_nc, _ = call_and_record(
+        "/identity/api/v1/vehicles",
+        f"{gateway_url}/identity/api/v1/vehicles",
+        method="POST",
+        body={
+            "rc_number": no_consent_rc,
+            "registration_date": fresh_reg_date,
+            "vehicle_segment_id": "hatchback_entry",
+            "owner_details": {
+                "full_name": "No Consent Owner",
+                "kyc_document_number": "987654321012",
+                "kyc_document_type": "AADHAAR",
+                "email": "noconsent@example.com",
+                "phone_number": "9876543210",
+            },
+        },
+        expected_status=201,
+        label="POST /identity/api/v1/vehicles (no consent fresh)",
+    )
+    no_consent_vid = resp_nc.get("vehicle_id") if isinstance(resp_nc, dict) else None
+    if no_consent_vid:
+        code_sr_403, body_sr_403, _ = call_and_record(
+            "/maintenance/api/v1/service-records",
+            f"{gateway_url}/maintenance/api/v1/service-records",
+            method="POST",
+            body={
+                "vehicle_id": no_consent_vid,
+                "service_date": (datetime.date.today() - datetime.timedelta(days=10)).isoformat(),
+                "service_type": "oil_change",
+                "odometer_km": 15000,
+            },
+            expected_status=403,
+            label="POST /maintenance/api/v1/service-records (opted-out -> 403 Forbidden)",
+        )
+        if code_sr_403 == 403:
+            check_response("POST /maintenance/api/v1/service-records (opted-out)", "error-response", body_sr_403)
+
+    # Fresh vehicle with consent enabled for accepted/flagged/rejected tests:
+    sr_test_rc = f"SRTEST{int(time.time() * 1000) % 100000:05d}"
+    code_sr_reg, resp_sr_reg, _ = call_and_record(
+        "/identity/api/v1/vehicles",
+        f"{gateway_url}/identity/api/v1/vehicles",
+        method="POST",
+        body={
+            "rc_number": sr_test_rc,
+            "registration_date": fresh_reg_date,
+            "vehicle_segment_id": "sedan_mid",
+            "owner_details": {
+                "full_name": "Service Record Tester",
+                "kyc_document_number": "112233445566",
+                "kyc_document_type": "AADHAAR",
+                "email": "srtest@example.com",
+                "phone_number": "9876543210",
+            },
+        },
+        expected_status=201,
+        label="POST /identity/api/v1/vehicles (sr test registration)",
+    )
+    sr_test_vid = resp_sr_reg.get("vehicle_id") if isinstance(resp_sr_reg, dict) else None
+    if sr_test_vid:
+        call_and_record(
+            "/identity/api/v1/vehicles/{id}/consent",
+            f"{gateway_url}/identity/api/v1/vehicles/{sr_test_vid}/consent",
+            method="PUT",
+            body={"usage_tracking_opt_in": True, "maintenance_tracking_opt_in": True},
+            expected_status=200,
+            label="PUT consent for sr test vehicle",
+        )
+
+        # 201 Accepted: oil_change 30 days ago at 15000 km
+        date_30d_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        code_sr_acc, body_sr_acc, _ = call_and_record(
+            "/maintenance/api/v1/service-records",
+            f"{gateway_url}/maintenance/api/v1/service-records",
+            method="POST",
+            body={
+                "vehicle_id": sr_test_vid,
+                "service_date": date_30d_ago,
+                "service_type": "oil_change",
+                "odometer_km": 15000,
+            },
+            expected_status=201,
+            label="POST /maintenance/api/v1/service-records (accepted -> 201 Created)",
+        )
+        if code_sr_acc == 201:
+            check_response("POST /maintenance/api/v1/service-records (accepted)", "service-record-response", body_sr_acc)
+
+        # 201 Flagged: brake_service 10 days ago at 12000 km (lower odometer -> odometer_monotonic fails)
+        date_10d_ago = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+        code_sr_flg, body_sr_flg, _ = call_and_record(
+            "/maintenance/api/v1/service-records",
+            f"{gateway_url}/maintenance/api/v1/service-records",
+            method="POST",
+            body={
+                "vehicle_id": sr_test_vid,
+                "service_date": date_10d_ago,
+                "service_type": "brake_service",
+                "odometer_km": 12000,
+            },
+            expected_status=201,
+            label="POST /maintenance/api/v1/service-records (flagged -> 201 Created)",
+        )
+        if code_sr_flg == 201:
+            check_response("POST /maintenance/api/v1/service-records (flagged)", "service-record-response", body_sr_flg)
+
+        # 200 Rejected: tomorrow date -> date_not_future fails
+        date_tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+        code_sr_rej, body_sr_rej, _ = call_and_record(
+            "/maintenance/api/v1/service-records",
+            f"{gateway_url}/maintenance/api/v1/service-records",
+            method="POST",
+            body={
+                "vehicle_id": sr_test_vid,
+                "service_date": date_tomorrow,
+                "service_type": "oil_change",
+                "odometer_km": 20000,
+            },
+            expected_status=200,
+            label="POST /maintenance/api/v1/service-records (rejected -> 200 OK)",
+        )
+        if code_sr_rej == 200:
+            check_response("POST /maintenance/api/v1/service-records (rejected)", "service-record-response", body_sr_rej)
+
     # 6. Item 3 Gateway Error Sweep (Malformed JSON & Wrong-typed fields)
     print("\n--- Gateway Error Sweep & Leak Verification ---")
+
     sweep_probes = [
         {
             "route_template": "/identity/api/v1/vehicles",

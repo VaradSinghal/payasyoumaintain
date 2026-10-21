@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/service-record-request/v1.0.0",
+  "title": "Service Record Request",
+  "description": "Request payload to submit a self-reported vehicle maintenance or service record.",
+  "type": "object",
+  "required": [
+    "vehicle_id",
+    "service_date",
+    "service_type",
+    "odometer_km"
+  ],
+  "properties": {
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle that was serviced."
+    },
+    "service_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO-8601 date on which the service was performed (YYYY-MM-DD)."
+    },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "oil_change",
+        "tyre_rotation",
+        "brake_service",
+        "battery_replacement",
+        "engine_service",
+        "transmission_service",
+        "suspension_repair",
+        "electrical_repair",
+        "body_repair",
+        "inspection",
+        "full_service",
+        "other"
+      ],
+      "description": "Category of the maintenance performed."
+    },
+    "odometer_km": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1500000,
+      "description": "Odometer reading in kilometres at the time of service."
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Optional notes from the vehicle owner or technician."
+    },
+    "receipt_ref": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Optional external or object storage reference for receipt."
+    },
+    "receipt_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$",
+      "description": "Optional 64-hex SHA-256 hash of the receipt file."
+    }
+  },
+  "additionalProperties": true
+}

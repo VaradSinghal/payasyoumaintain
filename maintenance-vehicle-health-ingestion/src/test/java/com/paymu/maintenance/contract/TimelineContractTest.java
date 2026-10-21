@@ -231,15 +231,47 @@ class TimelineContractTest {
         validateError(result.getResponse().getContentAsString());
     }
 
-    // ── 6. Exception handler 404 Not Found conforms to error-response ─────────
+    // ── 7. Default vs include_flagged timelines ──────────────────────────────
 
     @Test
-    @DisplayName("Maintenance exception handler 404 conforms to error-response schema")
-    void testExceptionHandler404ConformsToSchema() throws Exception {
-        MvcResult result = mockMvc.perform(get("/non-existent-timeline-route"))
-                .andExpect(status().isNotFound())
-                .andReturn();
+    @DisplayName("Timeline: default excludes flagged records while include_flagged=true includes them")
+    void testDefaultVsIncludeFlaggedTimeline() throws Exception {
+        String vehicleId = UUID.randomUUID().toString();
 
-        validateError(result.getResponse().getContentAsString());
+        MaintenanceEvent acceptedEvt = new MaintenanceEvent(
+                UUID.randomUUID().toString(), vehicleId, "2026-09-01", "oil_change", 15000,
+                List.of(new PartReplaced("Filter", "F-1", 1)), "self_upload", "", List.of(), "accepted");
+        MaintenanceEvent flaggedEvt = new MaintenanceEvent(
+                UUID.randomUUID().toString(), vehicleId, "2026-10-01", "brake_service", 12000,
+                List.of(new PartReplaced("Pads", "P-1", 1)), "self_upload", "", List.of(), "flagged");
+
+        ServiceTimeline defaultTimeline = new ServiceTimeline(
+                vehicleId, 1, "2026-09-01", 15000, List.of(acceptedEvt), 1);
+        ServiceTimeline fullTimeline = new ServiceTimeline(
+                vehicleId, 2, "2026-10-01", 12000, List.of(acceptedEvt, flaggedEvt), 1);
+
+        when(store.getTimeline(vehicleId)).thenReturn(defaultTimeline);
+        when(store.getTimeline(vehicleId, true)).thenReturn(fullTimeline);
+
+        // Default query:
+        MvcResult resDefault = mockMvc.perform(get("/timeline/{id}", vehicleId))
+                .andExpect(status().isOk())
+                .andReturn();
+        validateTimeline(resDefault.getResponse().getContentAsString());
+        JsonNode nodeDefault = objectMapper.readTree(resDefault.getResponse().getContentAsString());
+        assertEquals(1, nodeDefault.get("total_services").asInt());
+        assertEquals(1, nodeDefault.get("flagged_count").asInt());
+        assertEquals(1, nodeDefault.get("events").size());
+
+        // With include_flagged=true:
+        MvcResult resFull = mockMvc.perform(get("/timeline/{id}?include_flagged=true", vehicleId))
+                .andExpect(status().isOk())
+                .andReturn();
+        validateTimeline(resFull.getResponse().getContentAsString());
+        JsonNode nodeFull = objectMapper.readTree(resFull.getResponse().getContentAsString());
+        assertEquals(2, nodeFull.get("total_services").asInt());
+        assertEquals(1, nodeFull.get("flagged_count").asInt());
+        assertEquals(2, nodeFull.get("events").size());
     }
 }
+

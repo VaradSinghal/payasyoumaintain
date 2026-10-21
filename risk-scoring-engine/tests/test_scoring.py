@@ -601,4 +601,103 @@ def test_hard_acceleration_deductions_and_null_semantics():
     assert "usage_data_unavailable" in s4["data_flags"]
 
 
+# ── Self-Report Credit Cap Tests ──────────────────────────────────────────────
+
+def test_self_report_credit_cap_a_oem_good_plus_self():
+    """
+    (a) OEM-good plus an extra self record: 100, verified, unchanged.
+    OEM has recent full_service and brake_service. Adding a self-reported record
+    keeps the score 100 and confidence verified (since trusted is 100).
+    """
+    vid = "v-cap-a"
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 45, "full_service", 30000, "oem_api"),
+            ev("e2", 200, "brake_service", 25000, "oem_api"),
+            ev("e3", 10, "oil_change", 32000, "self_upload"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s = generate_score(vid, req)
+    assert s["vehicle_health_score"] == 100.0
+    assert s["health_confidence"] == "verified"
+    assert "unverified_source_cap" not in [f["factor_name"] for f in s["contributing_factors"]]
+
+
+def test_self_report_credit_cap_b_oem_poor_plus_self():
+    """
+    (b) OEM-only poor (full_service 800 days ago, no brake service, vehicle age 36 months):
+    trusted 45 (100 - 40 recency - 15 brake gap); adding a recent self-reported
+    brake_service gives final 85, unverified (capped at max(trusted, 85) = 85).
+    """
+    vid = "v-cap-b"
+    # Base: OEM-only poor
+    req_base = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 800, "full_service", 20000, "oem_api"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s_base = generate_score(vid, req_base)
+    assert s_base["vehicle_health_score"] == 45.0
+    assert s_base["health_confidence"] == "verified"
+
+    # With recent self-reported brake_service
+    req_lift = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 800, "full_service", 20000, "oem_api"),
+            ev("e2", 20, "brake_service", 21000, "self_upload"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s_lift = generate_score(vid, req_lift)
+    assert s_lift["vehicle_health_score"] == 85.0
+    assert s_lift["health_confidence"] == "unverified_self_reported"
+    assert "unverified_source_cap" in [f["factor_name"] for f in s_lift["contributing_factors"]]
+
+
+def test_self_report_credit_cap_c_self_only():
+    """
+    (c) self-only: 85, unverified, as today.
+    """
+    vid = "v-cap-c"
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 20, "brake_service", 21000, "self_upload"),
+            ev("e2", 20, "full_service", 21000, "self_upload"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s = generate_score(vid, req)
+    assert s["vehicle_health_score"] == 85.0
+    assert s["health_confidence"] == "unverified_self_reported"
+    assert "unverified_source_cap" in [f["factor_name"] for f in s["contributing_factors"]]
+
+
+def test_self_report_credit_cap_d_c3d4_conflict_unchanged():
+    """
+    (d) c3d4's conflict case unchanged:
+    Conflicting self_upload is dropped during conflict resolution;
+    OEM full service at 100 days remains, yielding 100.0, verified.
+    """
+    vid = "c3d4e5f6-a7b8-9012-cdef-123456789012"
+    req = ScoreRequest(
+        vehicle_age_months=36,
+        service_timeline=tl([
+            ev("e1", 100, "full_service", 42000, "oem_api"),
+            ev("e2", 95, "oil_change", 38500, "self_upload"),
+        ]),
+        recall_status=make_recall_status(vid, has_open=False),
+    )
+    s = generate_score(vid, req)
+    assert s["vehicle_health_score"] == 100.0
+    assert s["health_confidence"] == "verified"
+    assert "conflicting_records_detected" in s["data_flags"]
+
+
+
 

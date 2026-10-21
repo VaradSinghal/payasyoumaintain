@@ -14,7 +14,12 @@ BRAKE_GAP_PENALTY = 15.0
 BRAKE_WINDOW_DAYS = 24 * 30 + 10                         # ~24 months (730 days)
 BRAKE_MIN_VEHICLE_AGE_MONTHS = 24
 BRAKE_SERVICE_TYPES = {"brake_service", "full_service"}
-UNVERIFIED_SCORE_CAP = 85.0
+# Self-report credit cap configuration:
+# A vehicle whose records are all self-reported is capped at 85.
+# If trusted records (oem_api, inspection) exist, self-reported records cannot lift
+# the health score above max(trusted, 85).
+SELF_REPORT_CREDIT_CAP = 85.0
+UNVERIFIED_SCORE_CAP = SELF_REPORT_CREDIT_CAP
 TRUSTED_SOURCES = {"oem_api", "inspection"}
 SELF_UPLOAD = "self_upload"
 # Conflict detection: events this close in time are "near-overlapping"; the odometer
@@ -76,6 +81,35 @@ def _resolve_conflicts(events: List[MaintenanceEvent]) -> Tuple[List[Maintenance
     return usable, conflict
 
 
+def _evaluate_event_set(
+    events_subset: List[MaintenanceEvent],
+    age: Optional[int],
+    recall_penalty: float
+) -> Tuple[float, float, float, bool, bool]:
+    """
+    Computes (score, recency_penalty, gap_penalty, overdue, needs_brake)
+    for a given subset of maintenance events.
+    """
+    latest = max(events_subset, key=lambda e: e.service_date)
+    days = _days_since(latest.service_date)
+    recency_penalty = _recency_penalty(days)
+    overdue = recency_penalty > 0
+
+    brake_recent = any(
+        e.service_type in BRAKE_SERVICE_TYPES and _days_since(e.service_date) <= BRAKE_WINDOW_DAYS
+        for e in events_subset
+    )
+    gap_penalty = 0.0
+    needs_brake = False
+    if not brake_recent:
+        if age is not None and age >= BRAKE_MIN_VEHICLE_AGE_MONTHS:
+            gap_penalty = BRAKE_GAP_PENALTY
+            needs_brake = True
+
+    score = max(0.0, 100.0 - recency_penalty - recall_penalty - gap_penalty)
+    return score, recency_penalty, gap_penalty, overdue, needs_brake
+
+
 def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
     """Deterministic Vehicle Health Score per the Vehicle Health Scoring Specification."""
     factors: List[ContributingFactor] = []
@@ -116,11 +150,20 @@ def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
     if conflict:
         flags.append("conflicting_records_detected")
 
-    # 1. Service recency
+    if not events:
+        return HealthResult(
+            status="insufficient_data", score=None, confidence=None,
+            factors=factors, flags=flags, has_open_recall=has_open_recall,
+            maintenance_score=None,
+        )
+
+    # 1. Evaluate all usable events
+    score_all, recency_penalty, gap_penalty, overdue, needs_brake = _evaluate_event_set(
+        events, request.vehicle_age_months, recall_penalty
+    )
+
     latest = max(events, key=lambda e: e.service_date)
     days = _days_since(latest.service_date)
-    recency_penalty = _recency_penalty(days)
-    overdue = recency_penalty > 0
     if overdue:
         factors.append(ContributingFactor(
             factor_name="overdue_service", impact=0.4, direction="negative",
@@ -132,44 +175,56 @@ def calculate_vehicle_health(request: ScoreRequest) -> HealthResult:
             description="Vehicle is being serviced regularly."
         ))
 
-    # 2. Safety-critical (brake) gap
     brake_recent = any(
         e.service_type in BRAKE_SERVICE_TYPES and _days_since(e.service_date) <= BRAKE_WINDOW_DAYS
         for e in events
     )
-    gap_penalty = 0.0
-    needs_brake = False
-    age = request.vehicle_age_months
     if not brake_recent:
-        if age is None:
-            # Cannot establish the vehicle is 24+ months old; do not penalise.
+        if request.vehicle_age_months is None:
             flags.append("vehicle_age_unknown")
-        elif age >= BRAKE_MIN_VEHICLE_AGE_MONTHS:
-            gap_penalty = BRAKE_GAP_PENALTY
-            needs_brake = True
+        elif request.vehicle_age_months >= BRAKE_MIN_VEHICLE_AGE_MONTHS:
             factors.append(ContributingFactor(
                 factor_name="brake_service_gap", impact=0.2, direction="negative",
                 description="No brake-related service on record within the last 24 months."
             ))
 
-    score = max(0.0, 100.0 - recency_penalty - recall_penalty - gap_penalty)
-
-    # 3. Source confidence rule
-    confidence = "verified"
-    if all(e.source == SELF_UPLOAD for e in events):
+    # 2. Self-report credit cap rule:
+    # trusted = health score computed from oem_api and inspection records only.
+    # all = score computed from all accepted records (score_all).
+    # If no trusted record exists: final = min(all, 85).
+    # Otherwise: final = min(all, max(trusted, 85)).
+    # health_confidence is unverified_self_reported when final > trusted (or no trusted record exists), otherwise verified.
+    trusted_events = [e for e in events if e.source in TRUSTED_SOURCES]
+    if not trusted_events:
+        final_score = min(score_all, SELF_REPORT_CREDIT_CAP)
         confidence = "unverified_self_reported"
-        if score > UNVERIFIED_SCORE_CAP:
-            score = UNVERIFIED_SCORE_CAP
+        if final_score < score_all:
             factors.append(ContributingFactor(
                 factor_name="unverified_source_cap", impact=0.1, direction="negative",
                 description="Score capped: all service records are self-reported."
             ))
+    else:
+        score_trusted, _, _, _, _ = _evaluate_event_set(
+            trusted_events, request.vehicle_age_months, recall_penalty
+        )
+        final_score = min(score_all, max(score_trusted, SELF_REPORT_CREDIT_CAP))
+        if final_score > score_trusted:
+            confidence = "unverified_self_reported"
+        else:
+            confidence = "verified"
+
+        if final_score < score_all:
+            factors.append(ContributingFactor(
+                factor_name="unverified_source_cap", impact=0.1, direction="negative",
+                description="Score capped: self-reported records cannot lift score above 85 or above trusted baseline."
+            ))
 
     return HealthResult(
-        status="scored", score=score, confidence=confidence, factors=factors,
+        status="scored", score=final_score, confidence=confidence, factors=factors,
         flags=flags, has_open_recall=has_open_recall, overdue=overdue,
-        needs_brake=needs_brake, maintenance_score=score,
+        needs_brake=needs_brake, maintenance_score=final_score,
     )
+
 
 
 def generate_recommendation(h: HealthResult) -> str:

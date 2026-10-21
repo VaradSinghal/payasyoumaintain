@@ -5,6 +5,9 @@ import uuid
 import datetime
 import urllib.request
 import urllib.error
+import time
+import shutil
+import subprocess
 
 # Global results collector
 test_results = []
@@ -574,6 +577,355 @@ def main():
 
     st_magg, b_magg = request(f"{telematics_url}/aggregates/not-a-uuid")
     assert_status("telematics GET /aggregates/not-a-uuid -> 400", st_magg, 400, b_magg)
+
+    # 18. Item 6 Smoke Steps: Self-Reported Service Records & Credit Cap
+    print("\n--- Step 18: Item 6 Self-Reported Service Records & Credit Cap Smoke Steps ---")
+
+    # 6a. Vehicle A: segment sedan_mid, registered 2 years ago, opt in both. Quote -> insufficient_data.
+    #     POST oil_change 30 days ago at 15000 km -> 201 accepted, every check passed.
+    #     Quote -> health_status scored, maintenance_score and vehicle_health_score 85.0,
+    #     health_confidence unverified_self_reported, usage_score null, composite_score null,
+    #     multiplier 1.0, final 24,960.00.
+    reg_veh_a = {
+        "rc_number": f"VEHA{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(2),
+        "vehicle_segment_id": "sedan_mid",
+        "owner_details": {
+            "full_name": "Vehicle A Owner",
+            "email": "veha@example.com",
+            "phone_number": "9876543210",
+            "kyc_document_number": "PANA123456"
+        }
+    }
+    st_va, b_va = request(f"{gateway_url}/identity/api/v1/vehicles", method="POST", data=reg_veh_a)
+    assert_status("6a. Register Vehicle A (sedan_mid, 2 years ago)", st_va, 201, b_va)
+    vid_a = b_va.get("vehicle_id") if isinstance(b_va, dict) else None
+
+    # Opt in both
+    st_opt_a, b_opt_a = request(f"{gateway_url}/identity/api/v1/vehicles/{vid_a}/consent", method="PUT", data={
+        "usage_tracking_opt_in": True,
+        "maintenance_tracking_opt_in": True
+    })
+    assert_status("6a. Vehicle A opt in both", st_opt_a, 200, b_opt_a)
+
+    # Initial quote -> insufficient_data
+    st_q_a1, b_q_a1 = request(f"{gateway_url}/pricing/api/v1/quote/{vid_a}", method="POST")
+    assert_status("6a. Vehicle A quote before records -> 200", st_q_a1, 200, b_q_a1)
+    hs_a1 = (b_q_a1 or {}).get("score_detail", {}).get("health_status")
+    add_result("6a. Vehicle A initial health_status == 'insufficient_data'", hs_a1 == "insufficient_data", f"Got {hs_a1}")
+
+    # POST oil_change 30 days ago at 15000 km -> 201 accepted, every check passed
+    today = datetime.date.today()
+    date_30d = (today - datetime.timedelta(days=30)).isoformat()
+    sr_a1 = {
+        "vehicle_id": vid_a,
+        "service_date": date_30d,
+        "service_type": "oil_change",
+        "odometer_km": 15000
+    }
+    st_sr_a1, b_sr_a1 = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_a1)
+    assert_status("6a. POST oil_change 30 days ago at 15000 km -> 201", st_sr_a1, 201, b_sr_a1)
+    if isinstance(b_sr_a1, dict):
+        add_result("6a. Record stored == True", b_sr_a1.get("stored") is True)
+        verif = b_sr_a1.get("verification", {})
+        add_result("6a. Verification status == 'accepted'", verif.get("status") == "accepted", f"Got {verif.get('status')}")
+        checks = verif.get("checks", [])
+        all_passed = all(c.get("passed") is True for c in checks)
+        add_result("6a. Every check passed", all_passed and len(checks) == 6, f"Checks: {checks}")
+
+    # Quote -> health_status scored, maintenance_score and vehicle_health_score 85.0,
+    # health_confidence unverified_self_reported, usage_score null, composite_score null,
+    # multiplier 1.0, final 24,960.00
+    st_q_a2, b_q_a2 = request(f"{gateway_url}/pricing/api/v1/quote/{vid_a}", method="POST")
+    assert_status("6a. Vehicle A quote after record -> 200", st_q_a2, 200, b_q_a2)
+    sd_a2 = (b_q_a2 or {}).get("score_detail", {})
+    add_result("6a. health_status == 'scored'", sd_a2.get("health_status") == "scored", f"Got {sd_a2.get('health_status')}")
+    add_result("6a. maintenance_score == 85.0", sd_a2.get("maintenance_score") == 85.0, f"Got {sd_a2.get('maintenance_score')}")
+    add_result("6a. vehicle_health_score == 85.0", sd_a2.get("vehicle_health_score") == 85.0, f"Got {sd_a2.get('vehicle_health_score')}")
+    add_result("6a. health_confidence == 'unverified_self_reported'", sd_a2.get("health_confidence") == "unverified_self_reported", f"Got {sd_a2.get('health_confidence')}")
+    add_result("6a. usage_score is None", sd_a2.get("usage_score") is None, f"Got {sd_a2.get('usage_score')}")
+    add_result("6a. composite_score is None", sd_a2.get("composite_score") is None, f"Got {sd_a2.get('composite_score')}")
+    add_result("6a. multiplier == 1.0", (b_q_a2 or {}).get("dynamic_multiplier") == 1.0, f"Got {(b_q_a2 or {}).get('dynamic_multiplier')}")
+    add_result("6a. final_premium == 24,960.00", (b_q_a2 or {}).get("final_premium") == 24960.0, f"Got {(b_q_a2 or {}).get('final_premium')}")
+
+    # 6b. Record at 12000 km dated 10 days ago -> 201 flagged with odometer_monotonic failed.
+    #     Default timeline: total_services 1, flagged_count 1; ?include_flagged=true: 2 events, one flagged.
+    #     Quote unchanged.
+    date_10d = (today - datetime.timedelta(days=10)).isoformat()
+    sr_a2 = {
+        "vehicle_id": vid_a,
+        "service_date": date_10d,
+        "service_type": "brake_service",
+        "odometer_km": 12000
+    }
+    st_sr_a2, b_sr_a2 = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_a2)
+    assert_status("6b. Record at 12000 km dated 10 days ago -> 201", st_sr_a2, 201, b_sr_a2)
+    if isinstance(b_sr_a2, dict):
+        add_result("6b. Record stored == True", b_sr_a2.get("stored") is True)
+        verif2 = b_sr_a2.get("verification", {})
+        add_result("6b. Verification status == 'flagged'", verif2.get("status") == "flagged", f"Got {verif2.get('status')}")
+        failed_checks = [c.get("code") for c in verif2.get("checks", []) if not c.get("passed")]
+        add_result("6b. odometer_monotonic failed", "odometer_monotonic" in failed_checks, f"Failed checks: {failed_checks}")
+
+    # Default timeline: total_services 1, flagged_count 1
+    st_tl_def, b_tl_def = request(f"{gateway_url}/maintenance/api/v1/timeline/{vid_a}")
+    assert_status("6b. Default timeline -> 200", st_tl_def, 200, b_tl_def)
+    if isinstance(b_tl_def, dict):
+        add_result("6b. Default timeline total_services == 1", b_tl_def.get("total_services") == 1, f"Got {b_tl_def.get('total_services')}")
+        add_result("6b. Default timeline flagged_count == 1", b_tl_def.get("flagged_count") == 1, f"Got {b_tl_def.get('flagged_count')}")
+        add_result("6b. Default timeline events count == 1", len(b_tl_def.get("events", [])) == 1, f"Got {len(b_tl_def.get('events', []))}")
+
+    # ?include_flagged=true: 2 events, one flagged
+    st_tl_inc, b_tl_inc = request(f"{gateway_url}/maintenance/api/v1/timeline/{vid_a}?include_flagged=true")
+    assert_status("6b. include_flagged timeline -> 200", st_tl_inc, 200, b_tl_inc)
+    if isinstance(b_tl_inc, dict):
+        add_result("6b. include_flagged timeline total_services == 2", b_tl_inc.get("total_services") == 2, f"Got {b_tl_inc.get('total_services')}")
+        add_result("6b. include_flagged timeline flagged_count == 1", b_tl_inc.get("flagged_count") == 1, f"Got {b_tl_inc.get('flagged_count')}")
+        add_result("6b. include_flagged timeline events count == 2", len(b_tl_inc.get("events", [])) == 2, f"Got {len(b_tl_inc.get('events', []))}")
+
+    # Quote unchanged
+    st_q_a3, b_q_a3 = request(f"{gateway_url}/pricing/api/v1/quote/{vid_a}", method="POST")
+    assert_status("6b. Vehicle A quote unchanged -> 200", st_q_a3, 200, b_q_a3)
+    prem_a3 = (b_q_a3 or {}).get("final_premium")
+    add_result("6b. Quote final_premium unchanged == 24,960.00", prem_a3 == 24960.0, f"Got {prem_a3}")
+
+    # 6c. Duplicate of (a) -> flagged, not_duplicate failed
+    st_dup, b_dup = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_a1)
+    assert_status("6c. Duplicate of (a) -> 201", st_dup, 201, b_dup)
+    if isinstance(b_dup, dict):
+        verif_dup = b_dup.get("verification", {})
+        add_result("6c. Duplicate status == 'flagged'", verif_dup.get("status") == "flagged", f"Got {verif_dup.get('status')}")
+        dup_fails = [c.get("code") for c in verif_dup.get("checks", []) if not c.get("passed")]
+        add_result("6c. not_duplicate failed", "not_duplicate" in dup_fails, f"Failed checks: {dup_fails}")
+
+    # 6d. Date tomorrow (IST) -> 200 rejected, stored false, date_not_future failed; timeline unchanged.
+    #     Date before registration date -> 200 rejected, date_after_registration failed.
+    date_tomorrow = (today + datetime.timedelta(days=1)).isoformat()
+    sr_fut = {
+        "vehicle_id": vid_a,
+        "service_date": date_tomorrow,
+        "service_type": "oil_change",
+        "odometer_km": 16000
+    }
+    st_fut, b_fut = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_fut)
+    assert_status("6d. Date tomorrow (IST) -> 200 rejected", st_fut, 200, b_fut)
+    if isinstance(b_fut, dict):
+        add_result("6d. Future date stored == False", b_fut.get("stored") is False, f"Got {b_fut.get('stored')}")
+        verif_fut = b_fut.get("verification", {})
+        add_result("6d. Future date status == 'rejected'", verif_fut.get("status") == "rejected", f"Got {verif_fut.get('status')}")
+        fut_fails = [c.get("code") for c in verif_fut.get("checks", []) if not c.get("passed")]
+        add_result("6d. date_not_future failed", "date_not_future" in fut_fails, f"Failed checks: {fut_fails}")
+
+    # Timeline unchanged:
+    st_tl_chk, b_tl_chk = request(f"{gateway_url}/maintenance/api/v1/timeline/{vid_a}")
+    if isinstance(b_tl_chk, dict):
+        add_result("6d. Timeline unchanged after rejected record", b_tl_chk.get("total_services") == 1, f"Got {b_tl_chk.get('total_services')}")
+
+    # Date before registration date (reg date was 2 years ago, so 3 years ago is before)
+    date_before_reg = years_ago(3)
+    sr_bef = {
+        "vehicle_id": vid_a,
+        "service_date": date_before_reg,
+        "service_type": "oil_change",
+        "odometer_km": 5000
+    }
+    st_bef, b_bef = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_bef)
+    assert_status("6d. Date before registration -> 200 rejected", st_bef, 200, b_bef)
+    if isinstance(b_bef, dict):
+        add_result("6d. Before reg date stored == False", b_bef.get("stored") is False, f"Got {b_bef.get('stored')}")
+        verif_bef = b_bef.get("verification", {})
+        add_result("6d. Before reg date status == 'rejected'", verif_bef.get("status") == "rejected", f"Got {verif_bef.get('status')}")
+        bef_fails = [c.get("code") for c in verif_bef.get("checks", []) if not c.get("passed")]
+        add_result("6d. date_after_registration failed", "date_after_registration" in bef_fails, f"Failed checks: {bef_fails}")
+
+    # 6e. The 6th record on one day (distinct, valid values) -> flagged, daily_limit failed.
+    reg_veh_c = {
+        "rc_number": f"VEHC{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(1),
+        "vehicle_segment_id": "sedan_mid",
+        "owner_details": {
+            "full_name": "Vehicle C Owner",
+            "email": "vehc@example.com",
+            "phone_number": "9876543210",
+            "kyc_document_number": "PANC123456"
+        }
+    }
+    st_vc, b_vc = request(f"{gateway_url}/identity/api/v1/vehicles", method="POST", data=reg_veh_c)
+    assert_status("6e. Register Vehicle C", st_vc, 201, b_vc)
+    vid_c = b_vc.get("vehicle_id") if isinstance(b_vc, dict) else None
+    request(f"{gateway_url}/identity/api/v1/vehicles/{vid_c}/consent", method="PUT", data={
+        "usage_tracking_opt_in": True,
+        "maintenance_tracking_opt_in": True
+    })
+
+    # Post 5 valid records with distinct dates/odometer values
+    types = ["oil_change", "tyre_rotation", "brake_service", "battery_replacement", "engine_service", "transmission_service"]
+    for i in range(5):
+        s_date = (today - datetime.timedelta(days=100 - i * 10)).isoformat()
+        sr_i = {
+            "vehicle_id": vid_c,
+            "service_date": s_date,
+            "service_type": types[i],
+            "odometer_km": 10000 + i * 1000
+        }
+        st_i, b_i = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_i)
+        assert_status(f"6e. Insert record {i+1} for Vehicle C", st_i, 201, b_i)
+
+    # 6th record on this day -> flagged, daily_limit failed
+    s_date_6th = (today - datetime.timedelta(days=30)).isoformat()
+    sr_6 = {
+        "vehicle_id": vid_c,
+        "service_date": s_date_6th,
+        "service_type": types[5],
+        "odometer_km": 18000
+    }
+    st_6, b_6 = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_6)
+    assert_status("6e. 6th record on one day -> 201 flagged", st_6, 201, b_6)
+    if isinstance(b_6, dict):
+        verif_6 = b_6.get("verification", {})
+        add_result("6e. 6th record status == 'flagged'", verif_6.get("status") == "flagged", f"Got {verif_6.get('status')}")
+        fails_6 = [c.get("code") for c in verif_6.get("checks", []) if not c.get("passed")]
+        add_result("6e. daily_limit failed", "daily_limit" in fails_6, f"Failed checks: {fails_6}")
+
+    # 6f. A vehicle registered with both toggles off -> 403 CONSENT_REQUIRED.
+    #     A random uuid -> 404 VEHICLE_NOT_REGISTERED.
+    #     A body missing odometer_km -> 400 INVALID_REQUEST.
+    reg_veh_off = {
+        "rc_number": f"VEHOFF{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(1),
+        "vehicle_segment_id": "hatchback_entry",
+        "owner_details": {
+            "full_name": "Opted Out Owner",
+            "email": "off@example.com",
+            "phone_number": "9876543210",
+            "kyc_document_number": "PANOFF1234"
+        }
+    }
+    st_voff, b_voff = request(f"{gateway_url}/identity/api/v1/vehicles", method="POST", data=reg_veh_off)
+    assert_status("6f. Register vehicle with default toggles off", st_voff, 201, b_voff)
+    vid_off = b_voff.get("vehicle_id") if isinstance(b_voff, dict) else None
+
+    st_off_sr, b_off_sr = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data={
+        "vehicle_id": vid_off,
+        "service_date": date_30d,
+        "service_type": "oil_change",
+        "odometer_km": 10000
+    })
+    assert_status("6f. Toggles off -> 403 CONSENT_REQUIRED", st_off_sr, 403, b_off_sr)
+    if isinstance(b_off_sr, dict):
+        add_result("6f. Error code is CONSENT_REQUIRED", b_off_sr.get("error") == "CONSENT_REQUIRED", f"Got {b_off_sr.get('error')}")
+
+    # Random UUID -> 404 VEHICLE_NOT_REGISTERED
+    rand_vid = str(uuid.uuid4())
+    st_rand, b_rand = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data={
+        "vehicle_id": rand_vid,
+        "service_date": date_30d,
+        "service_type": "oil_change",
+        "odometer_km": 10000
+    })
+    assert_status("6f. Random UUID -> 404 VEHICLE_NOT_REGISTERED", st_rand, 404, b_rand)
+    if isinstance(b_rand, dict):
+        add_result("6f. Error code is VEHICLE_NOT_REGISTERED", b_rand.get("error") == "VEHICLE_NOT_REGISTERED", f"Got {b_rand.get('error')}")
+
+    # Missing odometer_km -> 400 INVALID_REQUEST
+    st_miss, b_miss = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data={
+        "vehicle_id": vid_a,
+        "service_date": date_30d,
+        "service_type": "oil_change"
+    })
+    assert_status("6f. Missing odometer_km -> 400 INVALID_REQUEST", st_miss, 400, b_miss)
+    if isinstance(b_miss, dict):
+        add_result("6f. Error code is INVALID_REQUEST", b_miss.get("error") == "INVALID_REQUEST", f"Got {b_miss.get('error')}")
+
+    # 6g. Vehicle B (registered 3 years ago, segment sedan_mid, opted in): through the dev-override port
+    #     POST an OEM event to maintenance's internal /events (oem_api, full_service, 800 days ago, 20000 km).
+    #     Quote -> vehicle_health_score 45.0, health_confidence verified.
+    #     POST a brake_service 20 days ago at 21000 km through the gateway -> accepted.
+    #     Quote -> vehicle_health_score 85.0, unverified_self_reported.
+    reg_veh_b = {
+        "rc_number": f"VEHB{uuid.uuid4().hex[:6].upper()}",
+        "registration_date": years_ago(3),
+        "vehicle_segment_id": "sedan_mid",
+        "owner_details": {
+            "full_name": "Vehicle B Owner",
+            "email": "vehb@example.com",
+            "phone_number": "9876543210",
+            "kyc_document_number": "PANB123456"
+        }
+    }
+    st_vb, b_vb = request(f"{gateway_url}/identity/api/v1/vehicles", method="POST", data=reg_veh_b)
+    assert_status("6g. Register Vehicle B (sedan_mid, 3 years ago)", st_vb, 201, b_vb)
+    vid_b = b_vb.get("vehicle_id") if isinstance(b_vb, dict) else None
+    request(f"{gateway_url}/identity/api/v1/vehicles/{vid_b}/consent", method="PUT", data={
+        "usage_tracking_opt_in": True,
+        "maintenance_tracking_opt_in": True
+    })
+
+    # Internal POST /events to maintenance dev-override port
+    date_800d = (today - datetime.timedelta(days=800)).isoformat()
+    oem_event = {
+        "event_id": str(uuid.uuid4()),
+        "vehicle_id": vid_b,
+        "service_date": date_800d,
+        "service_type": "full_service",
+        "odometer_km": 20000,
+        "parts_replaced": [],
+        "source": "oem_api",
+        "notes": "Historical OEM service"
+    }
+    st_oem, b_oem = request(f"{maintenance_url}/events", method="POST", data=[oem_event])
+    assert_status("6g. POST OEM event via internal /events -> 200", st_oem, 200, b_oem)
+
+    # Quote -> vehicle_health_score 45.0, health_confidence verified
+    st_qb1, b_qb1 = request(f"{gateway_url}/pricing/api/v1/quote/{vid_b}", method="POST")
+    assert_status("6g. Vehicle B quote after OEM event -> 200", st_qb1, 200, b_qb1)
+    sdb1 = (b_qb1 or {}).get("score_detail", {})
+    add_result("6g. vehicle_health_score == 45.0", sdb1.get("vehicle_health_score") == 45.0, f"Got {sdb1.get('vehicle_health_score')}")
+    add_result("6g. health_confidence == 'verified'", sdb1.get("health_confidence") == "verified", f"Got {sdb1.get('health_confidence')}")
+
+    # POST brake_service 20 days ago at 21000 km through gateway -> accepted
+    date_20d = (today - datetime.timedelta(days=20)).isoformat()
+    sr_b2 = {
+        "vehicle_id": vid_b,
+        "service_date": date_20d,
+        "service_type": "brake_service",
+        "odometer_km": 21000
+    }
+    st_srb2, b_srb2 = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data=sr_b2)
+    assert_status("6g. POST brake_service 20 days ago through gateway -> 201", st_srb2, 201, b_srb2)
+    if isinstance(b_srb2, dict):
+        verif_b2 = b_srb2.get("verification", {})
+        add_result("6g. Status == 'accepted'", verif_b2.get("status") == "accepted", f"Got {verif_b2.get('status')}")
+
+    # Quote -> vehicle_health_score 85.0, unverified_self_reported
+    st_qb2, b_qb2 = request(f"{gateway_url}/pricing/api/v1/quote/{vid_b}", method="POST")
+    assert_status("6g. Vehicle B quote after self record -> 200", st_qb2, 200, b_qb2)
+    sdb2 = (b_qb2 or {}).get("score_detail", {})
+    add_result("6g. vehicle_health_score == 85.0", sdb2.get("vehicle_health_score") == 85.0, f"Got {sdb2.get('vehicle_health_score')}")
+    add_result("6g. health_confidence == 'unverified_self_reported'", sdb2.get("health_confidence") == "unverified_self_reported", f"Got {sdb2.get('health_confidence')}")
+
+    # 6h. identity-consent stopped: POST a record -> 503; restart it and wait for healthy
+    if shutil.which("docker"):
+        print("Stopping identity-consent container...")
+        subprocess.run(["docker", "stop", "paymu-identity-consent-1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        st_503, b_503 = request(f"{gateway_url}/maintenance/api/v1/service-records", method="POST", data={
+            "vehicle_id": vid_a,
+            "service_date": date_30d,
+            "service_type": "oil_change",
+            "odometer_km": 15000
+        })
+        assert_status("6h. identity-consent stopped -> 503 SERVICE_UNAVAILABLE", st_503, 503, b_503)
+        print("Restarting identity-consent container...")
+        subprocess.run(["docker", "start", "paymu-identity-consent-1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Wait for healthy
+        for _ in range(30):
+            time.sleep(1)
+            st_h, _ = request(f"{identity_url}/vehicles/{vid_a}")
+            if st_h in (200, 404):
+                break
+        add_result("6h. identity-consent restarted and healthy", True)
+    else:
+        print("Skipping 6h container stop/start because docker CLI is not available in runner environment")
 
     summarize_and_exit()
 

@@ -38,30 +38,61 @@ public class MaintenanceStore {
     }
 
     /**
-     * Returns the full service timeline for a vehicle, ordered by service date
-     * (oldest first).  Returns {@code null} if no events exist for this vehicle.
+     * Returns the service timeline for a vehicle excluding flagged events by default.
      */
     public ServiceTimeline getTimeline(String vehicleId) {
+        return getTimeline(vehicleId, false);
+    }
+
+    /**
+     * Returns the service timeline for a vehicle.
+     * When includeFlagged is false, only non-flagged events are returned.
+     * flagged_count reflects the total number of flagged self-reported events.
+     */
+    public ServiceTimeline getTimeline(String vehicleId, boolean includeFlagged) {
         List<MaintenanceEvent> events = eventsByVehicle.get(vehicleId);
         if (events == null || events.isEmpty()) {
             return null;
         }
 
-        List<MaintenanceEvent> sorted;
+        List<MaintenanceEvent> allSorted;
         synchronized (events) {
-            sorted = events.stream()
+            allSorted = events.stream()
                     .sorted(Comparator.comparing(MaintenanceEvent::serviceDate))
                     .toList();
         }
 
-        MaintenanceEvent latest = sorted.getLast();
+        int flaggedCount = (int) allSorted.stream()
+                .filter(e -> "flagged".equalsIgnoreCase(e.verificationStatus()))
+                .count();
+
+        List<MaintenanceEvent> resultEvents = includeFlagged
+                ? allSorted
+                : allSorted.stream()
+                    .filter(e -> !"flagged".equalsIgnoreCase(e.verificationStatus()))
+                    .toList();
+
+        if (resultEvents.isEmpty()) {
+            return new ServiceTimeline(
+                    vehicleId,
+                    0,
+                    null,
+                    null,
+                    List.of(),
+                    flaggedCount
+            );
+        }
+
+        MaintenanceEvent latest = resultEvents.getLast();
 
         return new ServiceTimeline(
                 vehicleId,
-                sorted.size(),
+                resultEvents.size(),
                 latest.serviceDate(),
                 latest.odometerKm(),
-                sorted);
+                resultEvents,
+                flaggedCount
+        );
     }
 
     /**

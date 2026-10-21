@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://payasyoumaintain.com/schemas/service-record-response/v1.0.0",
+  "title": "Service Record Response",
+  "description": "Response payload returned upon submitting a self-reported vehicle maintenance record.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "vehicle_id",
+    "service_date",
+    "service_type",
+    "odometer_km",
+    "source",
+    "stored",
+    "verification",
+    "recorded_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this service record or event."
+    },
+    "vehicle_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the vehicle that was serviced."
+    },
+    "service_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO-8601 date on which the service was performed (YYYY-MM-DD)."
+    },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "oil_change",
+        "tyre_rotation",
+        "brake_service",
+        "battery_replacement",
+        "engine_service",
+        "transmission_service",
+        "suspension_repair",
+        "electrical_repair",
+        "body_repair",
+        "inspection",
+        "full_service",
+        "other"
+      ],
+      "description": "Category of the maintenance performed."
+    },
+    "odometer_km": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Odometer reading in kilometres at the time of service."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["self_upload"],
+      "description": "Source of this record, always self_upload."
+    },
+    "stored": {
+      "type": "boolean",
+      "description": "Whether the record was stored into the vehicle's maintenance timeline."
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "status",
+        "checks"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["accepted", "flagged", "rejected"],
+          "description": "Overall consistency check status."
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "passed",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Machine-readable rule identifier."
+              },
+              "passed": {
+                "type": "boolean",
+                "description": "Whether the check passed."
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable explanation of check evaluation."
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Detailed results of all evaluated consistency checks."
+        }
+      },
+      "additionalProperties": false
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when this record was processed."
+    }
+  },
+  "additionalProperties": false
+}

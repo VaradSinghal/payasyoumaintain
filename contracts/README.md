@@ -14,7 +14,7 @@ This directory is the **single source of truth** for the data contracts that eve
 | Schema | Version | Producers | Consumers | Description |
 |---|---|---|---|---|
 | [`usage-event.schema.json`](schemas/usage-event.schema.json) | v1.0.0 | telematics-usage-ingestion | risk-scoring-engine, notification-advisory | Trip-level telematics data point (GPS, speed, acceleration, braking) |
-| [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
+| [`maintenance-event.schema.json`](schemas/maintenance-event.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine, notification-advisory, claims-verification | Vehicle service / maintenance record |
 | [`recall-status.schema.json`](schemas/recall-status.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | risk-scoring-engine | Structured open-recall status from OEM recall database |
 | [`score.schema.json`](schemas/score.schema.json) | v1.2.0 | risk-scoring-engine | pricing-policy, notification-advisory, mobile-app | Risk score with explainability factors |
 | [`premium-request.schema.json`](schemas/premium-request.schema.json) | v1.0.0 | pricing-policy (internal) | pricing-policy | Request to compute a personalised premium |
@@ -29,7 +29,9 @@ This directory is the **single source of truth** for the data contracts that eve
 | [`fnol-request.schema.json`](schemas/fnol-request.schema.json) | v1.0.0 | mobile-app | claims-verification | First Notice of Loss claim submission request |
 | [`fnol-response.schema.json`](schemas/fnol-response.schema.json) | v1.0.0 | claims-verification | mobile-app, gateway | FNOL intake triage response and claim status |
 | [`advisory-response.schema.json`](schemas/advisory-response.schema.json) | v1.0.0 | notification-advisory | mobile-app, gateway | Prioritised list of advisories and alerts for vehicle owner |
-| [`service-timeline.schema.json`](schemas/service-timeline.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | claims-verification, risk-scoring-engine, mobile-app | Ordered history of all maintenance and service events |
+| [`service-timeline.schema.json`](schemas/service-timeline.schema.json) | v1.1.0 | maintenance-vehicle-health-ingestion | claims-verification, risk-scoring-engine, mobile-app | Ordered history of all maintenance and service events |
+| [`service-record-request.schema.json`](schemas/service-record-request.schema.json) | v1.0.0 | mobile-app | maintenance-vehicle-health-ingestion | Request payload to submit a self-reported vehicle maintenance record |
+| [`service-record-response.schema.json`](schemas/service-record-response.schema.json) | v1.0.0 | maintenance-vehicle-health-ingestion | mobile-app, gateway | Response payload with consistency verification results for self-reported records |
 | [`error-response.schema.json`](schemas/error-response.schema.json) | v1.0.0 | all services, gateway | clients, mobile-app | Standard error response returned on 4xx/5xx status codes |
 
 ## Versioning Policy
@@ -78,6 +80,10 @@ Schemas follow **Semantic Versioning** via the `$id` URI (e.g. `.../v1.0.0`).
 | 2026-10-20 | `advisory-response.schema.json` | — | v1.0.0 | **New** | Prioritised list of advisories covering all active advisory types. |
 | 2026-10-20 | `service-timeline.schema.json` | — | v1.0.0 | **New** | Vehicle service timeline contract with strict source enums (oem_api, self_upload, inspection). |
 | 2026-10-20 | `error-response.schema.json` | — | v1.0.0 | **New** | Universal error payload contract for 4xx/5xx responses across all services. |
+| 2026-10-21 | `service-record-request.schema.json` | — | v1.0.0 | **New** | Boundary contract for self-reported service records intake. |
+| 2026-10-21 | `service-record-response.schema.json` | — | v1.0.0 | **New** | Response contract returning consistency check verification results. |
+| 2026-10-21 | `maintenance-event.schema.json` | v1.0.0 | v1.1.0 | **Minor** | Added optional `verification_status` ('accepted' \| 'flagged') for self_upload records. |
+| 2026-10-21 | `service-timeline.schema.json` | v1.0.0 | v1.1.0 | **Minor** | Added optional `flagged_count` integer at timeline level and optional `verification_status` on event items. |
 
 ### Null semantics in `score.schema.json` (v1.2.0)
 
@@ -117,6 +123,8 @@ contracts/
     ├── premium-response.schema.json
     ├── recall-status.schema.json
     ├── score.schema.json
+    ├── service-record-request.schema.json
+    ├── service-record-response.schema.json
     ├── service-timeline.schema.json
     ├── trip-aggregate.schema.json
     ├── usage-event.schema.json

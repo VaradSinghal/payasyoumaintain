@@ -136,6 +136,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
       DEMO_SEED_ON_STARTUP: "true"
+      IDENTITY_URL: http://identity-consent:8081/api/v1
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8083/api/v1/actuator/health | grep -q UP || exit 1"]
       interval: 15s
