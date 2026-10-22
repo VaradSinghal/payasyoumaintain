@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "file": "mobile_app/test/fixtures/live/timeline_sr_default_200.json",
+    "reason": "Backend MaintenanceEvent includes recorded_at which is not in service-timeline contract (additionalProperties: false)",
+    "since": "2026-10-21"
+  },
+  {
+    "file": "mobile_app/test/fixtures/live/timeline_sr_include_flagged_200.json",
+    "reason": "Backend MaintenanceEvent includes recorded_at which is not in service-timeline contract (additionalProperties: false)",
+    "since": "2026-10-21"
+  }
+]

@@ -350,5 +350,89 @@ void main() {
       expect(qNoBasis.finalPremium, 13650.0);
       expect(qNoBasis.basePremium, 13650.0);
     });
+
+    test('New service record fixtures parse with exact value assertions', () {
+      // 1. service_record_accepted_201.json
+      final accJson = loadJson('service_record_accepted_201.json');
+      final acc = ServiceRecordResponse.fromJson(accJson);
+      expect(acc.stored, isTrue);
+      expect(acc.source, 'self_upload');
+      expect(acc.serviceType, 'oil_change');
+      expect(acc.odometerKm, 15000);
+      expect(acc.verification, isNotNull);
+      expect(acc.verification?.status, 'accepted');
+      expect(acc.verification?.checks.length, 6);
+      for (final check in acc.verification!.checks) {
+        expect(check.passed, isTrue, reason: 'Check ${check.code} should pass');
+        expect(check.message, isNotEmpty);
+      }
+      final accCodes = acc.verification!.checks.map((c) => c.code).toList();
+      expect(accCodes, containsAll([
+        'date_not_future',
+        'date_after_registration',
+        'odometer_monotonic',
+        'odometer_rate_plausible',
+        'not_duplicate',
+        'daily_limit',
+      ]));
+
+      // 2. service_record_flagged_201.json
+      final flagJson = loadJson('service_record_flagged_201.json');
+      final flag = ServiceRecordResponse.fromJson(flagJson);
+      expect(flag.stored, isTrue);
+      expect(flag.serviceType, 'tyre_rotation');
+      expect(flag.odometerKm, 12000);
+      expect(flag.verification?.status, 'flagged');
+      final flagOdoCheck = flag.verification!.checks.firstWhere((c) => c.code == 'odometer_monotonic');
+      expect(flagOdoCheck.passed, isFalse);
+      expect(flagOdoCheck.message, contains('violates monotonicity'));
+
+      // 3. service_record_rejected_200.json
+      final rejJson = loadJson('service_record_rejected_200.json');
+      final rej = ServiceRecordResponse.fromJson(rejJson);
+      expect(rej.stored, isFalse);
+      expect(rej.verification?.status, 'rejected');
+      final rejDateCheck = rej.verification!.checks.firstWhere((c) => c.code == 'date_after_registration');
+      expect(rejDateCheck.passed, isFalse);
+      expect(rejDateCheck.message, contains('before registration date'));
+
+      // 4. Error fixtures: 400, 403, 404
+      final err400 = ApiException.fromJson(400, loadJson('service_record_400.json'));
+      expect(err400.statusCode, 400);
+      expect(err400.error, 'INVALID_REQUEST');
+
+      final err403 = ApiException.fromJson(403, loadJson('service_record_403.json'));
+      expect(err403.statusCode, 403);
+      expect(err403.error, 'CONSENT_REQUIRED');
+
+      final err404 = ApiException.fromJson(404, loadJson('service_record_404.json'));
+      expect(err404.statusCode, 404);
+      expect(err404.error, 'VEHICLE_NOT_REGISTERED');
+
+      // 5. timeline_sr_default_200.json
+      final tlDef = MaintenanceTimeline.fromJson(loadJson('timeline_sr_default_200.json'));
+      expect(tlDef.flaggedCount, 1);
+      expect(tlDef.totalServices, 1);
+      expect(tlDef.events.length, 1);
+      expect(tlDef.events.first.verificationStatus, 'accepted');
+      expect(tlDef.events.first.source, 'self_upload');
+
+      // 6. timeline_sr_include_flagged_200.json
+      final tlInc = MaintenanceTimeline.fromJson(loadJson('timeline_sr_include_flagged_200.json'));
+      expect(tlInc.flaggedCount, 1);
+      expect(tlInc.totalServices, 2);
+      expect(tlInc.events.length, 2);
+      expect(tlInc.events[0].verificationStatus, 'accepted');
+      expect(tlInc.events[1].verificationStatus, 'flagged');
+
+      // 7. quote_service_record_200.json (post-record quote)
+      final qSr = QuoteResponse.fromJson(loadJson('quote_service_record_200.json'));
+      expect(qSr.scoreDetail?.maintenanceScore, 85.0);
+      expect(qSr.scoreDetail?.healthConfidence, 'unverified_self_reported');
+      expect(qSr.scoreDetail?.healthStatus, 'scored');
+      expect(qSr.basePremium, 24960.0);
+      expect(qSr.finalPremium, 24960.0);
+      expect(qSr.dynamicMultiplier, 1.0);
+    });
   });
 }

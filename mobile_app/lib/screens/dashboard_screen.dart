@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/models.dart';
+import '../providers/api_providers.dart';
 import '../providers/auth_provider.dart';
 import '../providers/dashboard_provider.dart';
 import '../utils/currency_formatter.dart';
@@ -17,7 +19,6 @@ class DashboardScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
       body: dashboardAsync.when(
         data: (data) => RefreshIndicator(
           onRefresh: () async {
@@ -49,8 +50,12 @@ class DashboardScreen extends ConsumerWidget {
         : null;
 
     return ListView(
+      scrollCacheExtent: const ScrollCacheExtent.viewport(3.0),
       padding: const EdgeInsets.all(16.0),
       children: [
+        if (authState.isDemo)
+          _buildDemoVehiclesBar(context, ref, authState.vehicleId),
+
         if (authState.isDemo && demoScenario != null)
           _buildAboutDemoVehicle(context, demoScenario),
 
@@ -123,6 +128,9 @@ class DashboardScreen extends ConsumerWidget {
         ],
 
         const SizedBox(height: 16),
+        _buildAddServiceRecordCard(context),
+
+        const SizedBox(height: 16),
         _buildDiagnosticsShortcut(context),
 
         const SizedBox(height: 16),
@@ -130,6 +138,173 @@ class DashboardScreen extends ConsumerWidget {
         const SizedBox(height: 8),
         _buildAdvisoriesList(context, advisories.advisories),
       ],
+    );
+  }
+
+  Widget _buildDemoVehiclesBar(BuildContext context, WidgetRef ref, String? currentVehicleId) {
+    final scenarios = DemoScenario.fallbackScenarios;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.directions_car, size: 18, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Demo Vehicles (5 Profiles)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                'Tap to switch live',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 74,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: scenarios.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final s = scenarios[index];
+                final isSelected = s.vehicleId == currentVehicleId;
+
+                String badgeText;
+                Color badgeBg;
+                Color badgeFg;
+
+                switch (s.vehicleId) {
+                  case 'a1b2c3d4-e5f6-7890-abcd-ef1234567890':
+                    badgeText = 'Score 100 · 0.70x';
+                    badgeBg = Colors.green.shade50;
+                    badgeFg = Colors.green.shade800;
+                    break;
+                  case 'b2c3d4e5-f6a7-8901-bcde-f12345678901':
+                    badgeText = 'Score 51 · Recall';
+                    badgeBg = Colors.red.shade50;
+                    badgeFg = Colors.red.shade800;
+                    break;
+                  case 'c3d4e5f6-a7b8-9012-cdef-123456789012':
+                    badgeText = 'Score 91 · Conflict';
+                    badgeBg = Colors.orange.shade50;
+                    badgeFg = Colors.orange.shade800;
+                    break;
+                  case 'd4e5f6a7-b8c9-0123-defa-234567890123':
+                    badgeText = 'Score 85 · Cap';
+                    badgeBg = Colors.amber.shade50;
+                    badgeFg = Colors.amber.shade900;
+                    break;
+                  case 'e5f6a7b8-c9d0-1234-efab-345678901234':
+                  default:
+                    badgeText = 'No data · Baseline';
+                    badgeBg = Colors.grey.shade100;
+                    badgeFg = Colors.grey.shade800;
+                    break;
+                }
+
+                return InkWell(
+                  key: Key('demo_vehicle_chip_${s.vehicleId.substring(0, 4)}'),
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () async {
+                    if (isSelected) return;
+                    try {
+                      final quote = await ref.read(pricingApiProvider).quote(s.vehicleId);
+                      final policyId = quote.policyId ?? 'demo-policy-${s.vehicleId.substring(0, 8)}';
+                      await ref.read(authProvider.notifier).login(s.vehicleId, policyId, isDemo: true);
+                      ref.invalidate(dashboardProvider);
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to switch vehicle: $e')),
+                        );
+                      }
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Theme.of(context).primaryColor : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected ? Theme.of(context).primaryColor : Colors.grey.shade300,
+                        width: isSelected ? 2 : 1,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: Theme.of(context).primaryColor.withValues(alpha: 0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isSelected)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4.0),
+                                child: Icon(Icons.check_circle, size: 14, color: Colors.white),
+                              ),
+                            Text(
+                              s.displayName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isSelected ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.white.withValues(alpha: 0.2) : badgeBg,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? Colors.white : badgeFg,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -376,23 +551,44 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   )
                 else if (detail.healthConfidence == 'unverified_self_reported')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.amber),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Unverified — self-reported only',
-                          style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold),
+                  InkWell(
+                    key: const Key('self_reported_badge'),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Self-reported records'),
+                          content: const Text(
+                            'Self-reported records can raise your health score up to 85 until a verified source confirms them.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              child: const Text('OK'),
+                            ),
+                          ],
                         ),
-                      ],
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.amber),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Includes self-reported records',
+                            style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -652,6 +848,19 @@ class DashboardScreen extends ConsumerWidget {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildAddServiceRecordCard(BuildContext context) {
+    return Card(
+      key: const Key('add_service_record_card'),
+      child: ListTile(
+        leading: const Icon(Icons.build_circle_outlined, color: Colors.blue, size: 28),
+        title: const Text('Add a service record', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Self-report recent maintenance or service entries'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/add-service-record'),
+      ),
     );
   }
 }

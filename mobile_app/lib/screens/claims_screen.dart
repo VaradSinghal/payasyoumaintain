@@ -81,23 +81,6 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Claims'),
-        actions: [
-          if (_lookupClaimId != null || _claimDetails != null)
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Clear Claim',
-              onPressed: () {
-                setState(() {
-                  _lookupClaimId = null;
-                  _claimDetails = null;
-                  _error = null;
-                });
-              },
-            ),
-        ],
-      ),
       body: SafeArea(
         child: _claimDetails != null
             ? _buildClaimStatus()
@@ -181,6 +164,22 @@ class _ClaimsScreenState extends ConsumerState<ClaimsScreen> {
                 ],
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('Back to File / Lookup Claim'),
+            onPressed: () {
+              setState(() {
+                _lookupClaimId = null;
+                _claimDetails = null;
+                _error = null;
+              });
+            },
           ),
         ),
       ],
@@ -338,6 +337,11 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
       );
     }
 
+    final auth = ref.watch(authProvider);
+    final demoScenario = auth.isDemo && auth.vehicleId != null
+        ? DemoScenario.findByVehicleId(auth.vehicleId!)
+        : null;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final firstAllowedDate = today.subtract(const Duration(days: 365));
@@ -349,6 +353,60 @@ class _FnolFormWidgetState extends ConsumerState<FnolFormWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('File a New Claim (FNOL)', style: Theme.of(context).textTheme.titleLarge),
+            if (demoScenario != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline, size: 18, color: Colors.blue.shade900),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Demo Suggestion for ${demoScenario.displayName}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Cause: ${demoScenario.suggestedClaim.claimedCause}  →  Expected Decision: ${demoScenario.suggestedClaim.expectedTriageDecision}',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const Key('demo_quick_fill_claim_button'),
+                        icon: const Icon(Icons.flash_on, size: 16),
+                        label: const Text('Quick-fill suggested demo claim'),
+                        onPressed: () {
+                          setState(() {
+                            _claimedCause = demoScenario.suggestedClaim.claimedCause;
+                            _descController.text =
+                                'Reported ${demoScenario.suggestedClaim.claimedCause} during demo verification.';
+                            _incidentDate = DateTime.now();
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             
             DropdownButtonFormField<String>(

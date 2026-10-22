@@ -262,12 +262,47 @@ class MaintenanceApi {
     }
   }
 
-  Future<MaintenanceTimeline> getTimeline(String vehicleId) async {
+  Future<ServiceRecordResponse> postServiceRecord(ServiceRecordRequest request) async {
+    if (ApiConfig.isDemoMode) {
+      return ServiceRecordResponse(
+        eventId: 'demo-sr-event-123',
+        vehicleId: request.vehicleId,
+        serviceDate: request.serviceDate,
+        serviceType: request.serviceType,
+        odometerKm: request.odometerKm,
+        source: 'self_upload',
+        stored: true,
+        verification: ServiceRecordVerification(
+          status: 'accepted',
+          checks: [
+            VerificationCheck(code: 'date_not_future', passed: true, message: 'Service date is not in the future.'),
+            VerificationCheck(code: 'date_after_registration', passed: true, message: 'Service date is on or after registration date.'),
+            VerificationCheck(code: 'odometer_monotonic', passed: true, message: 'Odometer reading is monotonic.'),
+            VerificationCheck(code: 'odometer_rate_plausible', passed: true, message: 'Odometer rate is plausible.'),
+            VerificationCheck(code: 'not_duplicate', passed: true, message: 'No duplicate record found.'),
+            VerificationCheck(code: 'daily_limit', passed: true, message: 'Daily limit not exceeded.'),
+          ],
+        ),
+        recordedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+    }
+    try {
+      final response = await _dio.post('/service-records', data: request.toJson());
+      return ServiceRecordResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw e.error ?? ApiException(null, 'Network error');
+    }
+  }
+
+  Future<MaintenanceTimeline> getTimeline(String vehicleId, {bool includeFlagged = false}) async {
     if (ApiConfig.isDemoMode) {
       return MaintenanceTimeline(vehicleId: vehicleId, totalServices: 0, events: []);
     }
     try {
-      final response = await _dio.get('/timeline/$vehicleId');
+      final response = await _dio.get(
+        '/timeline/$vehicleId',
+        queryParameters: includeFlagged ? {'include_flagged': 'true'} : null,
+      );
       return MaintenanceTimeline.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw e.error ?? ApiException(null, 'Network error');

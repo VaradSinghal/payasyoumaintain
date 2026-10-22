@@ -74,6 +74,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   MaintenanceTimeline? _timeline;
   List<TripAggregate>? _aggregates;
   bool _showAllTrips = false;
+  bool _showFlagged = false;
 
   @override
   void initState() {
@@ -122,7 +123,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     try {
       final results = await Future.wait([
-        ref.read(maintenanceApiProvider).getTimeline(vid),
+        ref.read(maintenanceApiProvider).getTimeline(vid, includeFlagged: _showFlagged),
         ref.read(telematicsApiProvider).getAggregates(vid),
       ]);
       if (mounted) {
@@ -167,6 +168,50 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  Widget _buildVerificationBadge(TimelineEvent e) {
+    if (e.verificationStatus == 'flagged') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: Colors.orange.shade400,
+          ),
+        ),
+        child: Text(
+          'Flagged — not used in scoring',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.orange.shade900,
+          ),
+        ),
+      );
+    }
+    if (e.source == 'self_upload') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: Colors.green.shade400,
+          ),
+        ),
+        child: Text(
+          'Accepted',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.green.shade900,
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dashboardState = ref.watch(dashboardProvider);
@@ -175,6 +220,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Why this score?'),
+        actions: [
+          IconButton(
+            key: const Key('add_service_record_button_appbar'),
+            icon: const Icon(Icons.add),
+            tooltip: 'Add a service record',
+            onPressed: () async {
+              await context.push('/add-service-record');
+              _loadData();
+            },
+          ),
+        ],
       ),
       body: isNotEvaluated
           ? _buildNotEvaluatedView(context)
@@ -218,7 +274,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildHistoryContent(BuildContext context) {
-    final events = List<TimelineEvent>.from(_timeline?.events ?? []);
+    final rawEvents = List<TimelineEvent>.from(_timeline?.events ?? []);
+    final events = _showFlagged
+        ? rawEvents
+        : rawEvents.where((e) => e.verificationStatus != 'flagged').toList();
+
     // Sort service records newest first
     events.sort((a, b) {
       final dateA = a.serviceDate ?? '';
@@ -236,14 +296,95 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     final displayedTrips = _showAllTrips ? trips : trips.take(10).toList();
 
+    final authState = ref.watch(authProvider);
+    final demoScenario = authState.isDemo && authState.vehicleId != null
+        ? DemoScenario.findByVehicleId(authState.vehicleId!)
+        : null;
+
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        Text(
-          'Service History',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        if (demoScenario != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.directions_car, size: 20, color: Colors.blue.shade900),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Demo Evidence: ${demoScenario.displayName}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      Text(
+                        demoScenario.descriptor,
+                        style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Service History',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            OutlinedButton.icon(
+              key: const Key('add_service_record_button'),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add a service record'),
+              onPressed: () async {
+                await context.push('/add-service-record');
+                _loadData();
+              },
+            ),
+          ],
         ),
         const SizedBox(height: 8),
+        if (_timeline != null && _timeline!.flaggedCount > 0) ...[
+          Card(
+            color: Colors.orange.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: Colors.orange.shade300),
+            ),
+            margin: const EdgeInsets.only(bottom: 12),
+            child: SwitchListTile(
+              key: const Key('show_flagged_switch'),
+              title: const Text('Show flagged', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                _timeline!.flaggedCount == 1
+                    ? '1 flagged record is not used in your score'
+                    : '${_timeline!.flaggedCount} flagged records are not used in your score',
+                style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+              ),
+              value: _showFlagged,
+              onChanged: (val) {
+                setState(() {
+                  _showFlagged = val;
+                });
+                _loadData();
+              },
+            ),
+          ),
+        ],
         if (events.isEmpty)
           const Card(
             child: Padding(
@@ -267,7 +408,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      _buildSourceBadge(e.source),
+                      Wrap(
+                        spacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _buildSourceBadge(e.source),
+                          _buildVerificationBadge(e),
+                        ],
+                      ),
                     ],
                   ),
                   subtitle: Padding(

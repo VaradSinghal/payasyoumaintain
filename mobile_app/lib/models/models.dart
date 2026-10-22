@@ -502,6 +502,8 @@ class TimelineEvent {
   final String? notes;
   final List<dynamic> partsReplaced;
   final List<String> documentRefs;
+  final String? verificationStatus;
+  final String? recordedAt;
 
   TimelineEvent({
     this.eventId,
@@ -513,6 +515,8 @@ class TimelineEvent {
     this.notes,
     this.partsReplaced = const [],
     this.documentRefs = const [],
+    this.verificationStatus,
+    this.recordedAt,
   });
 
   factory TimelineEvent.fromJson(Map<String, dynamic> json) {
@@ -529,6 +533,8 @@ class TimelineEvent {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      verificationStatus: json['verification_status'] as String?,
+      recordedAt: json['recorded_at'] as String?,
     );
   }
 }
@@ -538,6 +544,7 @@ class MaintenanceTimeline {
   final int totalServices;
   final String? latestServiceDate;
   final double? latestOdometerKm;
+  final int flaggedCount;
   final List<TimelineEvent> events;
 
   MaintenanceTimeline({
@@ -545,6 +552,7 @@ class MaintenanceTimeline {
     this.totalServices = 0,
     this.latestServiceDate,
     this.latestOdometerKm,
+    this.flaggedCount = 0,
     this.events = const [],
   });
 
@@ -554,11 +562,160 @@ class MaintenanceTimeline {
       totalServices: (json['total_services'] as num?)?.toInt() ?? 0,
       latestServiceDate: json['latest_service_date'] as String?,
       latestOdometerKm: (json['latest_odometer_km'] as num?)?.toDouble(),
+      flaggedCount: (json['flagged_count'] as num?)?.toInt() ?? 0,
       events: (json['events'] as List<dynamic>?)
               ?.map((e) => TimelineEvent.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
     );
+  }
+}
+
+class VerificationCheck {
+  final String code;
+  final bool passed;
+  final String message;
+
+  VerificationCheck({
+    required this.code,
+    required this.passed,
+    required this.message,
+  });
+
+  factory VerificationCheck.fromJson(Map<String, dynamic> json) {
+    return VerificationCheck(
+      code: json['code'] as String? ?? 'unknown_check',
+      passed: json['passed'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'code': code,
+      'passed': passed,
+      'message': message,
+    };
+  }
+}
+
+class ServiceRecordVerification {
+  final String status;
+  final List<VerificationCheck> checks;
+
+  ServiceRecordVerification({
+    required this.status,
+    this.checks = const [],
+  });
+
+  factory ServiceRecordVerification.fromJson(Map<String, dynamic> json) {
+    return ServiceRecordVerification(
+      status: json['status'] as String? ?? 'unknown',
+      checks: (json['checks'] as List<dynamic>?)
+              ?.map((e) => VerificationCheck.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'status': status,
+      'checks': checks.map((e) => e.toJson()).toList(),
+    };
+  }
+}
+
+class ServiceRecordResponse {
+  final String? eventId;
+  final String? vehicleId;
+  final String? serviceDate;
+  final String? serviceType;
+  final int? odometerKm;
+  final String? source;
+  final bool stored;
+  final ServiceRecordVerification? verification;
+  final String? recordedAt;
+
+  ServiceRecordResponse({
+    this.eventId,
+    this.vehicleId,
+    this.serviceDate,
+    this.serviceType,
+    this.odometerKm,
+    this.source,
+    this.stored = false,
+    this.verification,
+    this.recordedAt,
+  });
+
+  factory ServiceRecordResponse.fromJson(Map<String, dynamic> json) {
+    return ServiceRecordResponse(
+      eventId: json['event_id'] as String?,
+      vehicleId: json['vehicle_id'] as String?,
+      serviceDate: json['service_date'] as String?,
+      serviceType: json['service_type'] as String?,
+      odometerKm: (json['odometer_km'] as num?)?.toInt(),
+      source: json['source'] as String?,
+      stored: json['stored'] as bool? ?? false,
+      verification: json['verification'] is Map<String, dynamic>
+          ? ServiceRecordVerification.fromJson(json['verification'] as Map<String, dynamic>)
+          : null,
+      recordedAt: json['recorded_at'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'event_id': eventId,
+      'vehicle_id': vehicleId,
+      'service_date': serviceDate,
+      'service_type': serviceType,
+      'odometer_km': odometerKm,
+      'source': source,
+      'stored': stored,
+      if (verification != null) 'verification': verification!.toJson(),
+      'recorded_at': recordedAt,
+    };
+  }
+}
+
+class ServiceRecordRequest {
+  final String vehicleId;
+  final String serviceDate;
+  final String serviceType;
+  final int odometerKm;
+  final String? notes;
+  final String? receiptRef;
+  final String? receiptSha256;
+
+  ServiceRecordRequest({
+    required this.vehicleId,
+    required this.serviceDate,
+    required this.serviceType,
+    required this.odometerKm,
+    this.notes,
+    this.receiptRef,
+    this.receiptSha256,
+  });
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'vehicle_id': vehicleId,
+      'service_date': serviceDate,
+      'service_type': serviceType,
+      'odometer_km': odometerKm,
+    };
+    if (notes != null && notes!.trim().isNotEmpty) {
+      map['notes'] = notes!.trim();
+    }
+    if (receiptRef != null && receiptRef!.trim().isNotEmpty) {
+      map['receipt_ref'] = receiptRef!.trim();
+    }
+    if (receiptSha256 != null && receiptSha256!.trim().isNotEmpty) {
+      map['receipt_sha256'] = receiptSha256!.trim();
+    }
+    return map;
   }
 }
 

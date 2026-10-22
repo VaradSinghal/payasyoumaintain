@@ -20,7 +20,7 @@ void dumpScreenText() {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Live Stack E2E: scenarios a through h', (tester) async {
+  testWidgets('Live Stack E2E: scenarios a through k', (tester) async {
     final failures = <String>[];
 
     // Clean session setup
@@ -473,6 +473,263 @@ void main() {
         await tester.tap(backButton);
         await tester.pumpAndSettle(const Duration(seconds: 3));
       }
+    }
+
+    // ----------------------------------------------------------------------
+    // Scenario i: Register fresh vehicle through "Fill demo details" with both
+    //             consent toggles ON; add service record (oil_change, 30 days ago,
+    //             15000 km) -> Accepted with every check passing; dashboard shows
+    //             maintenance 85 with "Includes self-reported records", usage
+    //             "Not enough data yet", and premium unchanged at ₹24,960.00
+    // ----------------------------------------------------------------------
+    debugPrint('[SCENARIO I] Fresh vehicle registration + Accepted service record');
+    try {
+      // Reset session to clean onboarding
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset session'));
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      expect(find.text('Register my vehicle'), findsOneWidget);
+      await tester.tap(find.text('Register my vehicle'));
+      await tester.pumpAndSettle(const Duration(seconds: 3));
+
+      // Fill demo details
+      expect(find.text('Fill demo details'), findsOneWidget);
+      await tester.tap(find.text('Fill demo details'));
+      await tester.pumpAndSettle();
+
+      // Submit registration
+      final formScroll = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Register Vehicle'), 50.0, scrollable: formScroll);
+      await tester.tap(find.text('Register Vehicle'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Consent view: Turn both switches ON
+      expect(find.text('Data Sharing Preferences'), findsOneWidget);
+      await tester.tap(find.text('Usage Tracking'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Maintenance Tracking'));
+      await tester.pumpAndSettle();
+
+      // Continue to Quote
+      await tester.tap(find.text('Continue to Quote'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Go to Dashboard
+      final quoteScroll = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.text('Go to Dashboard'), 50.0, scrollable: quoteScroll);
+      await tester.tap(find.text('Go to Dashboard'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Scroll to "Add a service record" card
+      final dashScrollable = find.byType(Scrollable).first;
+      final addRecordCard = find.byKey(const Key('add_service_record_card'));
+      await tester.scrollUntilVisible(addRecordCard, 50.0, scrollable: dashScrollable);
+      await tester.drag(dashScrollable, const Offset(0, -100));
+      await tester.pumpAndSettle();
+
+      await tester.tap(addRecordCard);
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      // On Add Service Record screen
+      expect(find.text('Add Service Record'), findsOneWidget);
+
+      final now = DateTime.now();
+      final date30DaysAgo = now.subtract(const Duration(days: 30));
+      final date30Str = '${date30DaysAgo.year.toString().padLeft(4, '0')}-${date30DaysAgo.month.toString().padLeft(2, '0')}-${date30DaysAgo.day.toString().padLeft(2, '0')}';
+
+      // Set date: 30 days ago
+      await tester.enterText(find.byKey(const Key('service_date_field')), date30Str);
+      await tester.pumpAndSettle();
+
+      // Set odometer: 15000
+      await tester.enterText(find.byKey(const Key('odometer_field')), '15000');
+      await tester.pumpAndSettle();
+
+      // Submit form
+      final addFormScroll = find.byType(Scrollable).first;
+      final submitBtn = find.byKey(const Key('submit_service_record_button'));
+      await tester.scrollUntilVisible(submitBtn, 50.0, scrollable: addFormScroll);
+      await tester.tap(submitBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 6));
+
+      // Verify Result View: Accepted with all checks passing
+      expect(find.text('Accepted'), findsOneWidget);
+      expect(find.textContaining('Self-reported records can raise your health score up to 85'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsWidgets);
+      expect(find.byIcon(Icons.cancel), findsNothing);
+
+      // Tap Done
+      final resultScroll = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.byKey(const Key('done_button')), 50.0, scrollable: resultScroll);
+      await tester.drag(resultScroll, const Offset(0, -100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('done_button')));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Dashboard checks
+      final dashScrollable2 = find.byType(Scrollable).first;
+      await tester.drag(dashScrollable2, const Offset(0, 300));
+      await tester.pumpAndSettle();
+
+      expect(find.text('85 / 100'), findsOneWidget);
+      expect(find.text('Includes self-reported records'), findsOneWidget);
+      expect(find.text('Not enough data yet'), findsOneWidget);
+      expect(find.textContaining('₹24,960.00'), findsWidgets);
+      debugPrint('[SCENARIO I] PASS: 85 score, Includes self-reported records, Not enough data yet, ₹24,960.00');
+    } catch (e) {
+      debugPrint('[SCENARIO I] FAIL: $e');
+      dumpScreenText();
+      failures.add('Scenario i: $e');
+    }
+
+    // ----------------------------------------------------------------------
+    // Scenario j: Add a second record at 12000 km dated 10 days ago: Flagged
+    //             with the odometer check failing; History shows "1 flagged
+    //             record is not used in your score" and, with the switch on,
+    //             the flagged row.
+    // ----------------------------------------------------------------------
+    debugPrint('[SCENARIO J] Add second record (12000 km, 10 days ago) -> Flagged & History switch');
+    try {
+      final dashScrollable = find.byType(Scrollable).first;
+      final addRecordCard = find.byKey(const Key('add_service_record_card'));
+      await tester.scrollUntilVisible(addRecordCard, 50.0, scrollable: dashScrollable);
+      await tester.drag(dashScrollable, const Offset(0, -100));
+      await tester.pumpAndSettle();
+
+      await tester.tap(addRecordCard);
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      final now = DateTime.now();
+      final date10DaysAgo = now.subtract(const Duration(days: 10));
+      final date10Str = '${date10DaysAgo.year.toString().padLeft(4, '0')}-${date10DaysAgo.month.toString().padLeft(2, '0')}-${date10DaysAgo.day.toString().padLeft(2, '0')}';
+
+      // Select tyre_rotation
+      await tester.tap(find.byKey(const Key('service_type_dropdown')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Tyre Rotation').last);
+      await tester.pumpAndSettle();
+
+      // Set date: 10 days ago
+      await tester.enterText(find.byKey(const Key('service_date_field')), date10Str);
+      await tester.pumpAndSettle();
+
+      // Set odometer: 12000 (lower than previous 15000 km -> odometer_monotonic check fails)
+      await tester.enterText(find.byKey(const Key('odometer_field')), '12000');
+      await tester.pumpAndSettle();
+
+      // Submit form
+      final addFormScroll = find.byType(Scrollable).first;
+      final submitBtn = find.byKey(const Key('submit_service_record_button'));
+      await tester.scrollUntilVisible(submitBtn, 50.0, scrollable: addFormScroll);
+      await tester.tap(submitBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 6));
+
+      // Verify Result View: Flagged for review
+      expect(find.text('Flagged for review'), findsOneWidget);
+      expect(find.text("Saved, but not used in your score until it's reviewed."), findsOneWidget);
+      expect(find.byKey(const Key('check_odometer_monotonic')), findsOneWidget);
+      expect(find.byIcon(Icons.cancel), findsOneWidget);
+
+      // Tap Done -> returns to dashboard
+      final resultScrollJ = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.byKey(const Key('done_button')), 50.0, scrollable: resultScrollJ);
+      await tester.drag(resultScrollJ, const Offset(0, -100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('done_button')));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Open History via "Why this score?"
+      final dashScrollable2 = find.byType(Scrollable).first;
+      final whyBtn = find.byKey(const Key('why_this_score_button'));
+      await tester.scrollUntilVisible(whyBtn, 50.0, scrollable: dashScrollable2);
+      await tester.drag(dashScrollable2, const Offset(0, -150));
+      await tester.pumpAndSettle();
+
+      await tester.tap(whyBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      expect(find.text('Why this score?'), findsOneWidget);
+
+      // Verify notice and Show flagged switch
+      expect(find.text('1 flagged record is not used in your score'), findsOneWidget);
+      expect(find.byKey(const Key('show_flagged_switch')), findsOneWidget);
+
+      // Initially flagged row is hidden
+      expect(find.text('Flagged — not used in scoring'), findsNothing);
+
+      // Toggle switch to show flagged records
+      await tester.tap(find.byKey(const Key('show_flagged_switch')));
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      // Verify flagged row is now visible
+      expect(find.text('Flagged — not used in scoring'), findsOneWidget);
+      debugPrint('[SCENARIO J] PASS: Flagged record, notice, and Show flagged toggle verified');
+    } catch (e) {
+      debugPrint('[SCENARIO J] FAIL: $e');
+      dumpScreenText();
+      failures.add('Scenario j: $e');
+    } finally {
+      final backButton = find.byType(BackButton);
+      if (backButton.evaluate().isNotEmpty) {
+        await tester.tap(backButton);
+        await tester.pumpAndSettle(const Duration(seconds: 3));
+      }
+    }
+
+    // ----------------------------------------------------------------------
+    // Scenario k: Cover Rejected (a date before the registration date)
+    // ----------------------------------------------------------------------
+    debugPrint('[SCENARIO K] Add rejected record (date before registration date)');
+    try {
+      final dashScrollable = find.byType(Scrollable).first;
+      final addRecordCard = find.byKey(const Key('add_service_record_card'));
+      await tester.scrollUntilVisible(addRecordCard, 50.0, scrollable: dashScrollable);
+      await tester.drag(dashScrollable, const Offset(0, -100));
+      await tester.pumpAndSettle();
+
+      await tester.tap(addRecordCard);
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+
+      final now = DateTime.now();
+      // Registration date in demo details was 2 years ago; choose 3 years ago
+      final date3YearsAgo = now.subtract(const Duration(days: 365 * 3));
+      final datePreRegStr = '${date3YearsAgo.year.toString().padLeft(4, '0')}-${date3YearsAgo.month.toString().padLeft(2, '0')}-${date3YearsAgo.day.toString().padLeft(2, '0')}';
+
+      // Set date: 3 years ago
+      await tester.enterText(find.byKey(const Key('service_date_field')), datePreRegStr);
+      await tester.pumpAndSettle();
+
+      // Set odometer: 5000
+      await tester.enterText(find.byKey(const Key('odometer_field')), '5000');
+      await tester.pumpAndSettle();
+
+      // Submit form
+      final addFormScroll = find.byType(Scrollable).first;
+      final submitBtn = find.byKey(const Key('submit_service_record_button'));
+      await tester.scrollUntilVisible(submitBtn, 50.0, scrollable: addFormScroll);
+      await tester.tap(submitBtn);
+      await tester.pumpAndSettle(const Duration(seconds: 6));
+
+      // Verify Result View: Rejected
+      expect(find.text('Rejected'), findsOneWidget);
+      expect(find.textContaining('Not saved.'), findsOneWidget);
+      expect(find.byKey(const Key('check_date_after_registration')), findsOneWidget);
+      expect(find.byIcon(Icons.cancel), findsWidgets);
+
+      // Tap Done
+      final resultScrollK = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(find.byKey(const Key('done_button')), 50.0, scrollable: resultScrollK);
+      await tester.drag(resultScrollK, const Offset(0, -100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('done_button')));
+      await tester.pumpAndSettle(const Duration(seconds: 4));
+      debugPrint('[SCENARIO K] PASS: Rejected record (pre-registration date) displays rejected chip and failed checks');
+    } catch (e) {
+      debugPrint('[SCENARIO K] FAIL: $e');
+      dumpScreenText();
+      failures.add('Scenario k: $e');
     }
 
     // ----------------------------------------------------------------------
