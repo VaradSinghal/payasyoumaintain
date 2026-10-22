@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../models/models.dart';
 import '../providers/auth_provider.dart';
 
 class ShellScreen extends ConsumerWidget {
@@ -10,9 +11,31 @@ class ShellScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final demoScenario = authState.vehicleId != null
+        ? DemoScenario.findByVehicleId(authState.vehicleId!)
+        : null;
+
+    final isDashboard = navigationShell.currentIndex == 0;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pay As You Maintain'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(isDashboard ? 'Dashboard' : 'Claims'),
+            if (authState.isDemo && demoScenario != null)
+              Text(
+                'Demo: ${demoScenario.displayName}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.white70,
+                ),
+              ),
+          ],
+        ),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {

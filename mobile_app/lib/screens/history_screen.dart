@@ -296,9 +296,49 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     final displayedTrips = _showAllTrips ? trips : trips.take(10).toList();
 
+    final authState = ref.watch(authProvider);
+    final demoScenario = authState.isDemo && authState.vehicleId != null
+        ? DemoScenario.findByVehicleId(authState.vehicleId!)
+        : null;
+
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
+        if (demoScenario != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.directions_car, size: 20, color: Colors.blue.shade900),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Demo Evidence: ${demoScenario.displayName}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      Text(
+                        demoScenario.descriptor,
+                        style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
