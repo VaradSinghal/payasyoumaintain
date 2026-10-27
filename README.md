@@ -3,7 +3,8 @@
 **A usage-based insurance (UBI) platform that dynamically prices vehicle policies based on real-time driving behaviour and maintenance adherence.**
 
 > Submitted to **Guidewire Software** as a technical portfolio project.  
-> Author: Varad Singhal · GitHub: [VaradSinghal/payasyoumaintain](https://github.com/VaradSinghal/payasyoumaintain)
+> Author: Varad Singhal · GitHub: [VaradSinghal/payasyoumaintain](https://github.com/VaradSinghal/payasyoumaintain)  
+> 📖 **Presentation & System Architecture Guide:** [Master 4-Part Presentation Walkthrough](docs/PRESENTATION_AND_ARCHITECTURE_GUIDE.md)
 
 ---
 
